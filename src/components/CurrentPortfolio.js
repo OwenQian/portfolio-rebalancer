@@ -22,9 +22,12 @@ const CurrentPortfolio = ({
   const [selectedAccount, setSelectedAccount] = useState(null);
   const [newSymbol, setNewSymbol] = useState('');
   const [newShares, setNewShares] = useState('');
+  const [newValue, setNewValue] = useState('');
+  const [addPositionBy, setAddPositionBy] = useState('shares'); // 'shares' or 'value'
   const [newCategory, setNewCategory] = useState('');
-  const [editingPrices, setEditingPrices] = useState(false);
+  const [editingAssets, setEditingAssets] = useState(false);
   const [tempPrices, setTempPrices] = useState({...stockPrices});
+  const [tempCategories, setTempCategories] = useState({...stockCategories});
   const [tempApiKey, setTempApiKey] = useState(marketstackApiKey);
 
   const getAllUniqueStockSymbols = () => {
@@ -51,15 +54,24 @@ const CurrentPortfolio = ({
     }));
   };
 
-  const saveAllPrices = () => {
-    updateStockPrices(tempPrices);
-    setEditingPrices(false);
-    alert('Stock prices updated successfully');
+  const handleCategoryChange = (symbol, categoryId) => {
+    setTempCategories(prev => ({
+      ...prev,
+      [symbol]: categoryId
+    }));
   };
 
-  const cancelPriceEditing = () => {
+  const saveAssetSettings = () => {
+    updateStockPrices(tempPrices);
+    setStockCategories(tempCategories);
+    setEditingAssets(false);
+    alert('Asset settings updated successfully');
+  };
+
+  const cancelAssetEditing = () => {
     setTempPrices({...stockPrices});
-    setEditingPrices(false);
+    setTempCategories({...stockCategories});
+    setEditingAssets(false);
   };
 
   const handleConfigureApiKey = () => {
@@ -112,6 +124,8 @@ const CurrentPortfolio = ({
     setSelectedAccount(account);
     setNewSymbol('');
     setNewShares('');
+    setNewValue('');
+    setAddPositionBy('shares');
     setNewCategory('');
     setShowAddPositionModal(true);
   };
@@ -122,13 +136,34 @@ const CurrentPortfolio = ({
       return;
     }
 
-    if (!newShares || isNaN(newShares) || Number(newShares) <= 0) {
-      alert('Please enter a valid number of shares');
-      return;
-    }
-
     const symbol = newSymbol.toUpperCase();
-    const shares = Number(newShares);
+    let shares = 0;
+
+    if (addPositionBy === 'shares') {
+      if (!newShares || isNaN(newShares) || Number(newShares) <= 0) {
+        alert('Please enter a valid number of shares');
+        return;
+      }
+      shares = Number(newShares);
+    } else {
+      // Adding by dollar value
+      if (!newValue || isNaN(newValue) || Number(newValue) <= 0) {
+        alert('Please enter a valid dollar value');
+        return;
+      }
+
+      const price = stockPrices[symbol];
+      if (!price || price <= 0) {
+        alert('No price available for this symbol. Please update prices first or add by shares.');
+        return;
+      }
+
+      // Calculate shares based on dollar value and price
+      shares = Number(newValue) / price;
+      
+      // Round to 4 decimal places to handle fractional shares
+      shares = Math.round(shares * 10000) / 10000;
+    }
 
     if (newCategory) {
       setStockCategories({
@@ -207,7 +242,7 @@ const CurrentPortfolio = ({
   };
 
   const calculatePositionValue = (symbol, shares) => {
-    const price = editingPrices ? tempPrices[symbol] || 0 : stockPrices[symbol] || 0;
+    const price = editingAssets ? tempPrices[symbol] || 0 : stockPrices[symbol] || 0;
     return (price * shares).toFixed(2);
   };
 
@@ -240,19 +275,19 @@ const CurrentPortfolio = ({
             </Button>
           ) : (
             <>
-              {editingPrices ? (
+              {editingAssets ? (
                 <>
-                  <Button variant="success" onClick={saveAllPrices} className="me-2">
-                    Save Prices
+                  <Button variant="success" onClick={saveAssetSettings} className="me-2">
+                    Save Settings
                   </Button>
-                  <Button variant="secondary" onClick={cancelPriceEditing} className="me-2">
+                  <Button variant="secondary" onClick={cancelAssetEditing} className="me-2">
                     Cancel
                   </Button>
                 </>
               ) : (
                 <>
-                  <Button variant="warning" onClick={() => setEditingPrices(true)} className="me-2">
-                    Edit Prices
+                  <Button variant="warning" onClick={() => setEditingAssets(true)} className="me-2">
+                    Asset Settings
                   </Button>
                   <Button variant="success" onClick={handleSyncPrices} className="me-2">
                     Sync Prices
@@ -274,10 +309,10 @@ const CurrentPortfolio = ({
         </Alert>
       )}
 
-      {editingPrices && (
+      {editingAssets && (
         <Card className="mb-4">
           <Card.Header>
-            <h5 className="mb-0">Edit Stock Prices</h5>
+            <h5 className="mb-0">Asset Settings</h5>
           </Card.Header>
           <Card.Body>
             <div className="table-responsive">
@@ -287,6 +322,7 @@ const CurrentPortfolio = ({
                     <th>Symbol</th>
                     <th>Current Price</th>
                     <th>New Price</th>
+                    <th>Category</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -303,6 +339,20 @@ const CurrentPortfolio = ({
                           onChange={(e) => handlePriceChange(symbol, e.target.value)}
                           size="sm"
                         />
+                      </td>
+                      <td>
+                        <Form.Select
+                          size="sm"
+                          value={tempCategories[symbol] || ''}
+                          onChange={(e) => handleCategoryChange(symbol, e.target.value)}
+                        >
+                          <option value="">Select category</option>
+                          {categories.map(category => (
+                            <option key={category.id} value={category.id}>
+                              {category.name}
+                            </option>
+                          ))}
+                        </Form.Select>
                       </td>
                     </tr>
                   ))}
@@ -386,12 +436,22 @@ const CurrentPortfolio = ({
                             <tr key={positionIndex}>
                               <td>{position.symbol}</td>
                               <td>
-                                {stockCategories[position.symbol] ? (
-                                  <Badge bg="info">
-                                    {categories.find(cat => cat.id === stockCategories[position.symbol])?.name || 'Unknown'}
-                                  </Badge>
+                                {editingAssets ? (
+                                  tempCategories[position.symbol] ? (
+                                    <Badge bg="info">
+                                      {categories.find(cat => cat.id === tempCategories[position.symbol])?.name || 'Unknown'}
+                                    </Badge>
+                                  ) : (
+                                    <Badge bg="secondary">Uncategorized</Badge>
+                                  )
                                 ) : (
-                                  <Badge bg="secondary">Uncategorized</Badge>
+                                  stockCategories[position.symbol] ? (
+                                    <Badge bg="info">
+                                      {categories.find(cat => cat.id === stockCategories[position.symbol])?.name || 'Unknown'}
+                                    </Badge>
+                                  ) : (
+                                    <Badge bg="secondary">Uncategorized</Badge>
+                                  )
                                 )}
                               </td>
                               <td>
@@ -403,7 +463,7 @@ const CurrentPortfolio = ({
                                 />
                               </td>
                               <td>
-                                {formatDollarAmount(editingPrices ? tempPrices[position.symbol] || '0.00' : stockPrices[position.symbol] || '0.00')}
+                                {formatDollarAmount(editingAssets ? tempPrices[position.symbol] || '0.00' : stockPrices[position.symbol] || '0.00')}
                               </td>
                               <td>{formatDollarAmount(calculatePositionValue(position.symbol, position.shares))}</td>
                               <td>
@@ -481,14 +541,49 @@ const CurrentPortfolio = ({
             </Form.Group>
 
             <Form.Group className="mb-3">
-              <Form.Label>Number of Shares</Form.Label>
-              <Form.Control
-                type="number"
-                placeholder="e.g., 10"
-                value={newShares}
-                onChange={(e) => setNewShares(e.target.value)}
-              />
+              <Form.Label>Add Position By</Form.Label>
+              <Form.Select
+                value={addPositionBy}
+                onChange={(e) => setAddPositionBy(e.target.value)}
+              >
+                <option value="shares">Number of Shares</option>
+                <option value="value">Dollar Value</option>
+              </Form.Select>
             </Form.Group>
+
+            {addPositionBy === 'shares' ? (
+              <Form.Group className="mb-3">
+                <Form.Label>Number of Shares</Form.Label>
+                <Form.Control
+                  type="number"
+                  placeholder="e.g., 10"
+                  value={newShares}
+                  onChange={(e) => setNewShares(e.target.value)}
+                />
+              </Form.Group>
+            ) : (
+              <Form.Group className="mb-3">
+                <Form.Label>Dollar Value</Form.Label>
+                <Form.Control
+                  type="number"
+                  placeholder="e.g., 5000"
+                  value={newValue}
+                  onChange={(e) => setNewValue(e.target.value)}
+                />
+                {newSymbol && (
+                  <Form.Text className="text-muted">
+                    Current price: {formatDollarAmount(stockPrices[newSymbol.toUpperCase()] || '0.00')}
+                    {stockPrices[newSymbol.toUpperCase()] ? (
+                      <> (approx. {(newValue && stockPrices[newSymbol.toUpperCase()]) 
+                        ? (newValue / stockPrices[newSymbol.toUpperCase()]).toFixed(4) 
+                        : '0'} shares)</>
+                    ) : (
+                      <>. Please update price first.</>
+                    )}
+                  </Form.Text>
+                )}
+              </Form.Group>
+            )}
 
             <Form.Group className="mb-3">
               <Form.Label>Category</Form.Label>
