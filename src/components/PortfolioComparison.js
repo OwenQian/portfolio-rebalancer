@@ -1156,9 +1156,7 @@ const PortfolioComparison = ({
       'Percent of New Money': `${item.allocationPercent}%`,
       'Current Allocation': `${item.currentPercentage}%`,
       'Target Allocation': `${item.targetPercentage}%`,
-      'Projected Allocation': `${item.projectedPercentage}%`, 
-      'Current Deviation': `${item.deviation}%`,
-      'Projected Deviation': `${item.projectedDeviation}%`
+      'Deviation': `${item.deviation}%`
     }));
     
     const csvString = convertToCSV(buyOnlyData);
@@ -1464,8 +1462,8 @@ const PortfolioComparison = ({
                                     <th>% of New Money</th>
                                     <th>Current %</th>
                                     <th>Target %</th>
-                                    <th>Projected %</th>
                                     <th>Deviation</th>
+                                    <th>Projected %</th>
                                   </tr>
                                 </thead>
                                 <tbody>
@@ -1489,23 +1487,37 @@ const PortfolioComparison = ({
                                           <strong>{suggestion.symbol}</strong>
                                         </td>
                                         <td>{suggestion.category}</td>
-                                        <td>{recalculated ? recalculated.shares : suggestion.shares}</td>
-                                        <td>${recalculated ? formatNumber(recalculated.value) : formatNumber(suggestion.value)}</td>
-                                        <td>{recalculated ? recalculated.allocationPercent : suggestion.allocationPercent}%</td>
+                                        <td>{selectedTrades[index] ? (recalculated ? recalculated.shares : suggestion.shares) : "-"}</td>
+                                        <td>{selectedTrades[index] ? `$${recalculated ? formatNumber(recalculated.value) : formatNumber(suggestion.value)}` : "-"}</td>
+                                        <td>{selectedTrades[index] ? `${recalculated ? recalculated.allocationPercent : suggestion.allocationPercent}%` : "-"}</td>
                                         <td>{suggestion.currentPercentage}%</td>
                                         <td>{suggestion.targetPercentage}%</td>
-                                        <td>
-                                          {recalculated ? recalculated.projectedPercentage : suggestion.projectedPercentage}%
-                                          <Badge 
-                                            bg={parseFloat(recalculated ? recalculated.projectedDeviation : suggestion.projectedDeviation) > 0 ? "warning" : "info"}
-                                            className="ms-1"
-                                          >
-                                            {parseFloat(recalculated ? recalculated.projectedDeviation : suggestion.projectedDeviation) > 0 ? "+" : ""}
-                                            {recalculated ? recalculated.projectedDeviation : suggestion.projectedDeviation}%
-                                          </Badge>
-                                        </td>
                                         <td className={parseFloat(suggestion.deviation) < 0 ? 'text-danger' : 'text-success'}>
                                           {suggestion.deviation}%
+                                        </td>
+                                        <td>
+                                          {selectedTrades[index] ? (
+                                            <>
+                                              {recalculated ? recalculated.projectedPercentage : suggestion.projectedPercentage}%
+                                              <Badge 
+                                                bg={parseFloat(recalculated ? recalculated.projectedDeviation : suggestion.projectedDeviation) > 0 ? "warning" : "info"}
+                                                className="ms-1"
+                                              >
+                                                {parseFloat(recalculated ? recalculated.projectedDeviation : suggestion.projectedDeviation) > 0 ? "+" : ""}
+                                                {recalculated ? recalculated.projectedDeviation : suggestion.projectedDeviation}%
+                                              </Badge>
+                                            </>
+                                          ) : (
+                                            <>
+                                              {suggestion.currentPercentage}%
+                                              <Badge 
+                                                bg={parseFloat(suggestion.deviation) > 0 ? "warning" : "info"}
+                                                className="ms-1"
+                                              >
+                                                {suggestion.deviation}%
+                                              </Badge>
+                                            </>
+                                          )}
                                         </td>
                                       </tr>
                                     );
