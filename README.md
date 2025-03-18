@@ -10,6 +10,7 @@ A web application to help track and rebalance investment portfolios according to
 - **Allocation Visualization**: View current allocation with interactive pie charts
 - **Rebalancing Tools**: Compare current allocation with target models and get rebalancing suggestions
 - **Data Export**: Export portfolio data and rebalancing recommendations to JSON or CSV
+- **Data Persistence**: Save portfolio data locally with backup and restore capabilities in both web and desktop versions
 
 ## Getting Started
 
@@ -37,6 +38,20 @@ A web application to help track and rebalance investment portfolios according to
    ```
 
 4. Open [http://localhost:3000](http://localhost:3000) in your browser to use the application.
+
+### Desktop App (Optional)
+
+For enhanced features like automatic file-based data persistence:
+
+1. Run the desktop application:
+   ```
+   npm run electron-dev
+   ```
+
+2. Build desktop apps for distribution:
+   ```
+   npm run package
+   ```
 
 ## Usage Guide
 
@@ -99,9 +114,31 @@ To configure or update your API key:
    - Emerging Small Cap
    - Other
 
-## Data Storage
+### Data Persistence
 
-All data is stored locally in your browser's localStorage. No data is sent to external servers except when syncing prices with the Marketstack API.
+#### In Web Browser
+- **Local Storage**: All data is automatically saved to your browser's localStorage.
+- **Manual Backup**: Click "Backup Data" to download a JSON file with all your portfolio data.
+- **Manual Restore**: Click "Restore Data" then "Import From File" to upload a previously created backup file.
+- **Limitations**: Data is tied to your browser and may be lost if you clear browser data or switch browsers.
+
+#### In Desktop App
+When using the desktop app, data is automatically saved to files on your computer:
+
+1. **Automatic Backups**: Your portfolio data is automatically saved to a file in your application data directory.
+2. **Manual Backups**: Click the "Backup Data" button to create a timestamped backup of your portfolio data.
+3. **Restore Data**:
+   - Click "Restore Last Automatic Backup" to restore from the automatic backup.
+   - Click "Import From File" to restore from a previously created backup file.
+
+#### Backup File Location (Desktop App)
+Backup files are stored in:
+- **Windows**: `%APPDATA%\portfolio-rebalancer`
+- **macOS**: `~/Library/Application Support/portfolio-rebalancer`
+- **Linux**: `~/.config/portfolio-rebalancer`
+
+#### Note on Data Privacy
+No data is sent to external servers except when syncing prices with the Marketstack API. All portfolio data remains on your local device.
 
 ## License
 

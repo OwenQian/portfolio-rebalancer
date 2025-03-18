@@ -34,4 +34,9 @@ yarn-error.log*
 
 # API keys
 .env
-marketstack_api_key.txt 
+marketstack_api_key.txt
+
+# Data persistence
+/data
+/data/*.json
+portfolio-backup-*.json 

@@ -2,13 +2,18 @@
   "name": "portfolio-rebalancer",
   "version": "0.1.0",
   "private": true,
+  "main": "public/electron.js",
+  "homepage": "./",
   "dependencies": {
+    "@electron/remote": "^2.1.2",
     "@testing-library/jest-dom": "^5.17.0",
     "@testing-library/react": "^13.4.0",
     "@testing-library/user-event": "^13.5.0",
     "axios": "^1.8.3",
     "bootstrap": "^5.3.3",
     "chart.js": "^4.4.8",
+    "electron": "^35.0.2",
+    "electron-is-dev": "^3.0.1",
     "react": "^18.2.0",
     "react-bootstrap": "^2.10.9",
     "react-chartjs-2": "^5.3.0",
@@ -21,7 +26,11 @@
     "start": "react-scripts start",
     "build": "react-scripts build",
     "test": "react-scripts test",
-    "eject": "react-scripts eject"
+    "eject": "react-scripts eject",
+    "electron-dev": "concurrently \"cross-env BROWSER=none PORT=${PORT:-3000} npm start\" \"wait-on http://localhost:${PORT:-3000} && cross-env PORT=${PORT:-3000} electron .\"",
+    "electron": "electron .",
+    "package": "electron-builder build --mac --win --linux -c.extraMetadata.main=build/electron.js --publish never",
+    "postinstall": "electron-builder install-app-deps"
   },
   "eslintConfig": {
     "extends": [
@@ -40,5 +49,21 @@
       "last 1 firefox version",
       "last 1 safari version"
     ]
+  },
+  "build": {
+    "appId": "com.portfolio.rebalancer",
+    "files": [
+      "build/**/*",
+      "node_modules/**/*"
+    ],
+    "directories": {
+      "buildResources": "assets"
+    }
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "cross-env": "^7.0.3",
+    "electron-builder": "^24.13.3",
+    "wait-on": "^7.2.0"
   }
 }
