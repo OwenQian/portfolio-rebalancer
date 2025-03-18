@@ -1,0 +1,68 @@
+.App {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.card {
+  margin-bottom: 20px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.table-responsive {
+  overflow-x: auto;
+}
+
+.form-group {
+  margin-bottom: 1rem;
+}
+
+.btn-group {
+  margin-right: 5px;
+}
+
+.header {
+  background-color: #f8f9fa;
+  border-bottom: 1px solid #ddd;
+  padding: 15px 0;
+  margin-bottom: 20px;
+}
+
+.portfolio-card {
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.portfolio-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 6px 10px rgba(0, 0, 0, 0.15);
+}
+
+.category-badge {
+  margin-right: 5px;
+  margin-bottom: 5px;
+}
+
+.chart-container {
+  position: relative;
+  height: 300px;
+  width: 100%;
+}
+
+.comparison-table .table-success {
+  background-color: rgba(40, 167, 69, 0.2);
+}
+
+.comparison-table .table-danger {
+  background-color: rgba(220, 53, 69, 0.2);
+}
+
+.stock-picker {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.section-title {
+  margin-bottom: 20px;
+  border-bottom: 2px solid #007bff;
+  padding-bottom: 5px;
+  display: inline-block;
+}
