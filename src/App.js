@@ -814,6 +814,7 @@ function App() {
                   updateApiKey={updateApiKey}
                   isLoadingPrices={isLoadingPrices}
                   apiError={apiError}
+                  modelPortfolios={modelPortfolios}
                 />
               </Col>
               <Col md={4}>

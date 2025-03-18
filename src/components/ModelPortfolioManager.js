@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Row, Col, Card, Button, Form, Table, Modal, Badge } from 'react-bootstrap';
+import { Row, Col, Card, Button, Form, Table, Modal, Badge, Dropdown } from 'react-bootstrap';
 import { formatNumber } from '../utils/formatters';
 
 const ModelPortfolioManager = ({ 
@@ -19,6 +19,96 @@ const ModelPortfolioManager = ({
   const [stocks, setStocks] = useState([]);
   const [editIndex, setEditIndex] = useState(null);
 
+  // Preset portfolio templates
+  const presetPortfolios = {
+    bogleheads2Fund: {
+      name: "Bogleheads 2-Fund Portfolio (60/40)",
+      stocks: [
+        { symbol: "VTI", percentage: 60 },
+        { symbol: "VXUS", percentage: 40 }
+      ]
+    },
+    bogleheads3Fund: {
+      name: "Bogleheads 3-Fund Portfolio (60/20/20)",
+      stocks: [
+        { symbol: "VTI", percentage: 60 },
+        { symbol: "VXUS", percentage: 20 },
+        { symbol: "BND", percentage: 20 }
+      ]
+    }
+  };
+
+  // Function to categorize ETFs automatically
+  const categorizeETFs = (stocks) => {
+    // Map of ETFs to their categories
+    const etfCategories = {
+      "VTI": "1", // US Large Cap
+      "VXUS": "3", // International Developed Markets
+      "BND": "7", // Other (for bonds)
+      "VOO": "1", // US Large Cap
+      "VEA": "3", // International Developed Markets
+      "VWO": "4", // Emerging Markets
+      "VB": "2", // US Small Cap
+      "VTV": "1", // US Large Cap (Value)
+      "VUG": "1", // US Large Cap (Growth)
+      "VTEB": "7", // Other (Municipal bonds)
+      "VGSH": "7", // Other (Short-term Treasury)
+      "VGIT": "7", // Other (Intermediate-term Treasury)
+      "VGLT": "7", // Other (Long-term Treasury)
+      "VCSH": "7", // Other (Short-term corporate bonds)
+      "VCIT": "7", // Other (Intermediate-term corporate bonds)
+      "VCLT": "7", // Other (Long-term corporate bonds)
+      "VSS": "5", // International Small Cap
+      "VXF": "2" // US Small Cap
+    };
+
+    // Create a new map merging existing categories with automatic ones
+    const newCategories = { ...stockCategories };
+    
+    // Add category for each stock if not already categorized
+    stocks.forEach(stock => {
+      if (etfCategories[stock.symbol] && !newCategories[stock.symbol]) {
+        newCategories[stock.symbol] = etfCategories[stock.symbol];
+      }
+    });
+    
+    return newCategories;
+  };
+
+  // Function to create a preset portfolio
+  const createPresetPortfolio = (preset) => {
+    const portfolioTemplate = presetPortfolios[preset];
+    if (!portfolioTemplate) return;
+    
+    // Check if a portfolio with this name already exists
+    const existingIndex = modelPortfolios.findIndex(p => p.name === portfolioTemplate.name);
+    
+    // Create the new portfolio
+    const newPortfolio = {
+      name: portfolioTemplate.name,
+      stocks: portfolioTemplate.stocks,
+      createdAt: new Date().toISOString()
+    };
+    
+    // Auto-categorize ETFs
+    const newCategories = categorizeETFs(portfolioTemplate.stocks);
+    setStockCategories(newCategories);
+    
+    // Update the model portfolios
+    if (existingIndex >= 0) {
+      // Replace existing portfolio
+      const updatedPortfolios = [...modelPortfolios];
+      updatedPortfolios[existingIndex] = {
+        ...newPortfolio,
+        updatedAt: new Date().toISOString()
+      };
+      setModelPortfolios(updatedPortfolios);
+    } else {
+      // Add new portfolio
+      setModelPortfolios([...modelPortfolios, newPortfolio]);
+    }
+  };
+
   const handleAddPortfolio = () => {
     setNewPortfolioName('');
     setStocks([]);
@@ -28,9 +118,20 @@ const ModelPortfolioManager = ({
   const handleEditPortfolio = (portfolio, index) => {
     setCurrentPortfolio(portfolio);
     setNewPortfolioName(portfolio.name);
-    setStocks([...portfolio.stocks]);
+    // Add categoryId property to each stock for editing
+    const stocksWithCategories = portfolio.stocks.map(stock => ({
+      ...stock,
+      categoryId: stockCategories[stock.symbol] || ''
+    }));
+    setStocks(stocksWithCategories);
     setEditIndex(index);
     setShowEditModal(true);
+  };
+
+  const handleStockCategoryChange = (index, categoryId) => {
+    const updatedStocks = [...stocks];
+    updatedStocks[index].categoryId = categoryId;
+    setStocks(updatedStocks);
   };
 
   const handleDeletePortfolio = (index) => {
@@ -121,10 +222,19 @@ const ModelPortfolioManager = ({
       return;
     }
 
+    // Save any category changes
+    const updatedStockCategories = { ...stockCategories };
+    stocks.forEach(stock => {
+      if (stock.categoryId && stock.categoryId !== stockCategories[stock.symbol]) {
+        updatedStockCategories[stock.symbol] = stock.categoryId;
+      }
+    });
+    setStockCategories(updatedStockCategories);
+
     const updatedPortfolio = {
       ...currentPortfolio,
       name: newPortfolioName,
-      stocks: stocks,
+      stocks: stocks.map(({ symbol, percentage }) => ({ symbol, percentage })), // Remove categoryId from stocks object
       updatedAt: new Date().toISOString()
     };
 
@@ -139,9 +249,24 @@ const ModelPortfolioManager = ({
       <Row className="mb-4">
         <Col>
           <h2 className="section-title">Model Portfolios</h2>
-          <Button variant="primary" onClick={handleAddPortfolio}>
-            Add New Model Portfolio
-          </Button>
+          <div className="d-flex gap-2">
+            <Button variant="primary" onClick={handleAddPortfolio}>
+              Add New Model Portfolio
+            </Button>
+            <Dropdown>
+              <Dropdown.Toggle variant="outline-primary" id="dropdown-presets">
+                Add Preset Portfolio
+              </Dropdown.Toggle>
+              <Dropdown.Menu>
+                <Dropdown.Item onClick={() => createPresetPortfolio('bogleheads2Fund')}>
+                  Bogleheads 2-Fund (60/40 VTI/VXUS)
+                </Dropdown.Item>
+                <Dropdown.Item onClick={() => createPresetPortfolio('bogleheads3Fund')}>
+                  Bogleheads 3-Fund (60/20/20 VTI/VXUS/BND)
+                </Dropdown.Item>
+              </Dropdown.Menu>
+            </Dropdown>
+          </div>
         </Col>
       </Row>
 
@@ -423,15 +548,31 @@ const ModelPortfolioManager = ({
                   {stocks.map((stock, index) => (
                     <tr key={index}>
                       <td>{stock.symbol}</td>
-                      <td>{formatNumber(stock.percentage)}%</td>
                       <td>
-                        {stockCategories[stock.symbol] ? (
-                          <Badge bg="info">
-                            {categories.find(cat => cat.id === stockCategories[stock.symbol])?.name || 'Unknown'}
-                          </Badge>
-                        ) : (
-                          <Badge bg="secondary">Uncategorized</Badge>
-                        )}
+                        <Form.Control
+                          type="number"
+                          size="sm"
+                          value={stock.percentage}
+                          onChange={(e) => {
+                            const updatedStocks = [...stocks];
+                            updatedStocks[index].percentage = parseFloat(e.target.value);
+                            setStocks(updatedStocks);
+                          }}
+                        />
+                      </td>
+                      <td>
+                        <Form.Select
+                          size="sm"
+                          value={stock.categoryId || ''}
+                          onChange={(e) => handleStockCategoryChange(index, e.target.value)}
+                        >
+                          <option value="">Select category</option>
+                          {categories.map(category => (
+                            <option key={category.id} value={category.id}>
+                              {category.name}
+                            </option>
+                          ))}
+                        </Form.Select>
                       </td>
                       <td>
                         <Button

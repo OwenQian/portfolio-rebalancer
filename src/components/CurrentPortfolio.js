@@ -13,7 +13,8 @@ const CurrentPortfolio = ({
   marketstackApiKey,
   updateApiKey,
   isLoadingPrices,
-  apiError
+  apiError,
+  modelPortfolios
 }) => {
   const [showAddAccountModal, setShowAddAccountModal] = useState(false);
   const [showAddPositionModal, setShowAddPositionModal] = useState(false);
@@ -29,13 +30,22 @@ const CurrentPortfolio = ({
   const [tempPrices, setTempPrices] = useState({...stockPrices});
   const [tempCategories, setTempCategories] = useState({...stockCategories});
   const [tempApiKey, setTempApiKey] = useState(marketstackApiKey);
+  const [newPrice, setNewPrice] = useState('');
 
   const getAllUniqueStockSymbols = () => {
     const symbols = new Set();
     
+    // Add symbols from accounts
     accounts.forEach(account => {
       account.positions.forEach(position => {
         symbols.add(position.symbol);
+      });
+    });
+    
+    // Add symbols from model portfolios
+    modelPortfolios?.forEach(portfolio => {
+      portfolio.stocks.forEach(stock => {
+        symbols.add(stock.symbol);
       });
     });
     
@@ -258,6 +268,43 @@ const CurrentPortfolio = ({
     }, 0).toFixed(2);
   };
 
+  const handleAddNewStock = () => {
+    if (!newSymbol.trim()) {
+      alert('Please enter a stock symbol');
+      return;
+    }
+
+    const symbol = newSymbol.toUpperCase();
+    if (tempPrices[symbol]) {
+      alert('This stock is already in your portfolio.');
+      return;
+    }
+
+    if (!newPrice || isNaN(parseFloat(newPrice)) || parseFloat(newPrice) <= 0) {
+      alert('Please enter a valid price');
+      return;
+    }
+
+    const price = parseFloat(newPrice).toFixed(2);
+
+    // Update temporary prices and categories
+    setTempPrices(prev => ({
+      ...prev,
+      [symbol]: price
+    }));
+    
+    if (newCategory) {
+      setTempCategories(prev => ({
+        ...prev,
+        [symbol]: newCategory
+      }));
+    }
+
+    setNewSymbol('');
+    setNewPrice('');
+    setNewCategory('');
+  };
+
   return (
     <div>
       <Row className="mb-4">
@@ -315,6 +362,62 @@ const CurrentPortfolio = ({
             <h5 className="mb-0">Asset Settings</h5>
           </Card.Header>
           <Card.Body>
+            {/* Add new stock form */}
+            <div className="mb-4">
+              <h6>Add New Stock</h6>
+              <Row className="align-items-end">
+                <Col md={3}>
+                  <Form.Group className="mb-2">
+                    <Form.Label>Symbol</Form.Label>
+                    <Form.Control
+                      type="text"
+                      placeholder="e.g., AAPL"
+                      value={newSymbol}
+                      onChange={(e) => setNewSymbol(e.target.value.toUpperCase())}
+                    />
+                  </Form.Group>
+                </Col>
+                <Col md={3}>
+                  <Form.Group className="mb-2">
+                    <Form.Label>Price</Form.Label>
+                    <Form.Control
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      placeholder="e.g., 150.00"
+                      value={newPrice}
+                      onChange={(e) => setNewPrice(e.target.value)}
+                    />
+                  </Form.Group>
+                </Col>
+                <Col md={4}>
+                  <Form.Group className="mb-2">
+                    <Form.Label>Category</Form.Label>
+                    <Form.Select
+                      value={newCategory}
+                      onChange={(e) => setNewCategory(e.target.value)}
+                    >
+                      <option value="">Select category</option>
+                      {categories.map(category => (
+                        <option key={category.id} value={category.id}>
+                          {category.name}
+                        </option>
+                      ))}
+                    </Form.Select>
+                  </Form.Group>
+                </Col>
+                <Col md={2} className="mb-2">
+                  <Button 
+                    variant="secondary"
+                    onClick={handleAddNewStock}
+                  >
+                    Add Stock
+                  </Button>
+                </Col>
+              </Row>
+            </div>
+
+            <h6>Edit Existing Stocks</h6>
             <div className="table-responsive">
               <Table striped bordered hover>
                 <thead>
