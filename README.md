@@ -12,6 +12,11 @@ A web application to help track and rebalance investment portfolios according to
 - **Data Export**: Export portfolio data and rebalancing recommendations to JSON or CSV
 - **Data Persistence**: Save portfolio data locally with backup and restore capabilities in both web and desktop versions
 
+## Screenshot
+
+![Portfolio Rebalancer Screenshot](screenshot.png)
+*Portfolio comparison view showing allocation differences between model and current portfolios*
+
 ## Getting Started
 
 ### Prerequisites
