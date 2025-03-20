@@ -19,6 +19,7 @@ const CurrentPortfolio = ({
   const [showAddAccountModal, setShowAddAccountModal] = useState(false);
   const [showAddPositionModal, setShowAddPositionModal] = useState(false);
   const [showApiKeyModal, setShowApiKeyModal] = useState(false);
+  const [showSyncModal, setShowSyncModal] = useState(false);
   const [newAccountName, setNewAccountName] = useState('');
   const [selectedAccount, setSelectedAccount] = useState(null);
   const [newSymbol, setNewSymbol] = useState('');
@@ -32,6 +33,7 @@ const CurrentPortfolio = ({
   const [tempApiKey, setTempApiKey] = useState(marketstackApiKey);
   const [newPrice, setNewPrice] = useState('');
   const [expandedAccounts, setExpandedAccounts] = useState(Array(accounts.length).fill(true).map((_, i) => i.toString()));
+  const [symbolsToSync, setSymbolsToSync] = useState({});
 
   const expandAllAccounts = () => {
     const allAccountKeys = accounts.map((_, index) => index.toString());
@@ -67,6 +69,16 @@ const CurrentPortfolio = ({
       portfolio.stocks.forEach(stock => {
         symbols.add(stock.symbol);
       });
+    });
+    
+    // Add symbols from stockCategories
+    Object.keys(stockCategories).forEach(symbol => {
+      symbols.add(symbol);
+    });
+    
+    // Add symbols from stockPrices
+    Object.keys(stockPrices).forEach(symbol => {
+      symbols.add(symbol);
     });
     
     return Array.from(symbols).sort();
@@ -118,8 +130,46 @@ const CurrentPortfolio = ({
     if (!marketstackApiKey) {
       handleConfigureApiKey();
     } else {
-      updateStockPrices();
+      // Initialize symbols to sync
+      const allSymbols = getAllUniqueStockSymbols();
+      const initialSyncState = allSymbols.reduce((acc, symbol) => {
+        acc[symbol] = true;
+        return acc;
+      }, {});
+      setSymbolsToSync(initialSyncState);
+      setShowSyncModal(true);
     }
+  };
+
+  const handleConfirmSync = () => {
+    const selectedSymbols = Object.keys(symbolsToSync).filter(symbol => symbolsToSync[symbol]);
+    updateStockPrices(undefined, selectedSymbols);
+    setShowSyncModal(false);
+  };
+
+  const handleSelectAllSymbols = () => {
+    const allSymbols = getAllUniqueStockSymbols();
+    const selectAll = allSymbols.reduce((acc, symbol) => {
+      acc[symbol] = true;
+      return acc;
+    }, {});
+    setSymbolsToSync(selectAll);
+  };
+
+  const handleDeselectAllSymbols = () => {
+    const allSymbols = getAllUniqueStockSymbols();
+    const deselectAll = allSymbols.reduce((acc, symbol) => {
+      acc[symbol] = false;
+      return acc;
+    }, {});
+    setSymbolsToSync(deselectAll);
+  };
+
+  const toggleSymbolSelection = (symbol) => {
+    setSymbolsToSync(prev => ({
+      ...prev,
+      [symbol]: !prev[symbol]
+    }));
   };
 
   const handleAddAccount = () => {
@@ -635,6 +685,97 @@ const CurrentPortfolio = ({
           </Accordion>
         </>
       )}
+
+      {/* Price Sync Selection Modal */}
+      <Modal show={showSyncModal} onHide={() => setShowSyncModal(false)} size="lg">
+        <Modal.Header closeButton>
+          <Modal.Title>Select Positions to Update Prices</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          <div className="d-flex justify-content-end mb-3">
+            <Button 
+              variant="outline-primary" 
+              size="sm" 
+              className="me-2"
+              onClick={handleSelectAllSymbols}
+            >
+              Select All
+            </Button>
+            <Button 
+              variant="outline-secondary" 
+              size="sm"
+              onClick={handleDeselectAllSymbols}
+            >
+              Deselect All
+            </Button>
+          </div>
+          <div className="table-responsive">
+            <Table striped bordered hover>
+              <thead>
+                <tr>
+                  <th>Select</th>
+                  <th>Symbol</th>
+                  <th>Current Price</th>
+                  <th>Category</th>
+                  <th>Source</th>
+                </tr>
+              </thead>
+              <tbody>
+                {getAllUniqueStockSymbols().map((symbol) => {
+                  // Determine source of the symbol
+                  const inAccounts = accounts.some(account => 
+                    account.positions.some(position => position.symbol === symbol)
+                  );
+                  const inModelPortfolios = modelPortfolios?.some(portfolio => 
+                    portfolio.stocks.some(stock => stock.symbol === symbol)
+                  );
+                  
+                  return (
+                    <tr key={symbol}>
+                      <td>
+                        <Form.Check
+                          type="checkbox"
+                          checked={symbolsToSync[symbol] || false}
+                          onChange={() => toggleSymbolSelection(symbol)}
+                          id={`sync-check-${symbol}`}
+                        />
+                      </td>
+                      <td>{symbol}</td>
+                      <td>{formatDollarAmount(stockPrices[symbol] || '0.00')}</td>
+                      <td>
+                        {stockCategories[symbol] ? (
+                          <Badge bg="info">
+                            {categories.find(cat => cat.id === stockCategories[symbol])?.name || 'Unknown'}
+                          </Badge>
+                        ) : (
+                          <Badge bg="secondary">Uncategorized</Badge>
+                        )}
+                      </td>
+                      <td>
+                        {inAccounts && <Badge bg="success" className="me-1">Account</Badge>}
+                        {inModelPortfolios && <Badge bg="primary" className="me-1">Model</Badge>}
+                        {!inAccounts && !inModelPortfolios && <Badge bg="secondary">Category Only</Badge>}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </Table>
+          </div>
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={() => setShowSyncModal(false)}>
+            Cancel
+          </Button>
+          <Button 
+            variant="primary" 
+            onClick={handleConfirmSync}
+            disabled={!Object.values(symbolsToSync).some(selected => selected)}
+          >
+            Sync Selected Prices
+          </Button>
+        </Modal.Footer>
+      </Modal>
 
       {/* Add Account Modal */}
       <Modal show={showAddAccountModal} onHide={() => setShowAddAccountModal(false)}>

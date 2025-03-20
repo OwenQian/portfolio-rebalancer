@@ -230,7 +230,7 @@ function App() {
   }, [modelPortfolios, accounts, categories, stockCategories, stockPrices, marketstackApiKey, isUsingFileStorage]);
 
   // Function to update stock prices using Marketstack API
-  const updateStockPrices = async (manualPrices = null) => {
+  const updateStockPrices = async (manualPrices = null, selectedSymbols = null) => {
     try {
       // If manual prices are provided, use them
       if (manualPrices) {
@@ -240,24 +240,31 @@ function App() {
 
       // Get all unique stock symbols from accounts and model portfolios
       const symbols = new Set();
-      accounts.forEach(account => {
-        account.positions.forEach(position => {
-          symbols.add(position.symbol);
+      
+      if (selectedSymbols && selectedSymbols.length > 0) {
+        // Use provided selected symbols if available
+        selectedSymbols.forEach(symbol => symbols.add(symbol));
+      } else {
+        // Otherwise get all symbols
+        accounts.forEach(account => {
+          account.positions.forEach(position => {
+            symbols.add(position.symbol);
+          });
         });
-      });
 
-      // Also include symbols from model portfolios
-      modelPortfolios.forEach(portfolio => {
-        portfolio.stocks.forEach(stock => {
-          symbols.add(stock.symbol);
+        // Also include symbols from model portfolios
+        modelPortfolios.forEach(portfolio => {
+          portfolio.stocks.forEach(stock => {
+            symbols.add(stock.symbol);
+          });
         });
-      });
+      }
 
       // Convert to array and format for API request
       const symbolsArray = Array.from(symbols);
       
       if (symbolsArray.length === 0) {
-        alert('No symbols found in your portfolio.');
+        alert('No symbols selected for price update.');
         return;
       }
 
