@@ -1272,43 +1272,106 @@ const PortfolioComparison = ({
   };
 
   const prepareCsvExport = () => {
-    const suggestions = memoizedGenerateRebalanceSuggestions();
-    if (suggestions.length === 0) {
-      alert('No rebalancing suggestions available to export.');
-      return;
+    let suggestions;
+    
+    if (showBuyOnlyRebalancing) {
+      // For buy-only mode, use the selected/recalculated suggestions
+      if (!recalculatedSuggestions || recalculatedSuggestions.length === 0) {
+        alert('No buy-only rebalancing suggestions available to export.');
+        return;
+      }
+      
+      // Format buy-only suggestions for CSV
+      const headers = ['Symbol', 'Category', 'Shares to Buy', 'Investment Amount', 'Percent of New Money', 'Current %', 'Target %', 'Deviation', 'Projected %', 'Projected Deviation'];
+      const csvRows = [
+        headers.join(','),
+        ...recalculatedSuggestions.map(suggestion => {
+          return [
+            `"${suggestion.symbol}"`,
+            `"${suggestion.category}"`,
+            suggestion.shares,
+            parseFloat(suggestion.value).toFixed(2),
+            `${suggestion.allocationPercent}%`,
+            `${suggestion.currentPercentage}%`,
+            `${suggestion.targetPercentage}%`,
+            `${suggestion.deviation}%`,
+            `${suggestion.projectedPercentage}%`,
+            `${suggestion.projectedDeviation}%`
+          ].join(',');
+        })
+      ];
+      
+      const csvContent = csvRows.join('\n');
+      setCsvExportData(csvContent);
+      setShowCsvModal(true);
+      
+    } else {
+      // For sell-buy rebalancing mode, use the regular rebalancing suggestions
+      suggestions = memoizedGenerateRebalanceSuggestions();
+      
+      if (!suggestions || suggestions.length === 0) {
+        alert('No rebalancing suggestions available to export.');
+        return;
+      }
+      
+      // Calculate shares for each suggestion and get category information
+      const suggestionsWithDetails = suggestions.map(suggestion => {
+        const symbol = suggestion.action.split(' ')[1];  // Extract symbol from "BUY AAPL" or "SELL AAPL"
+        const shares = symbol && stockPrices[symbol] 
+          ? Math.floor(suggestion.amount / stockPrices[symbol])
+          : 0;
+        const categoryId = stockCategories[symbol] || 'uncategorized';
+        const categoryName = categories.find(c => c.id === categoryId)?.name || 'Uncategorized';
+        
+        return {
+          symbol,
+          category: categoryName,
+          action: suggestion.action,
+          shares,
+          amount: suggestion.amount,
+          currentCategoryPercentage: (currentAllocation[categoryId] || 0).toFixed(2),
+          targetCategoryPercentage: (modelAllocation[categoryId] || 0).toFixed(2),
+          deviation: ((currentAllocation[categoryId] || 0) - (modelAllocation[categoryId] || 0)).toFixed(2),
+          projectedCategoryPercentage: (simulatedAllocation[categoryId] || 0).toFixed(2),
+          projectedDeviation: ((simulatedAllocation[categoryId] || 0) - (modelAllocation[categoryId] || 0)).toFixed(2)
+        };
+      });
+      
+      const headers = [
+        'Symbol',
+        'Category',
+        'Action',
+        'Shares',
+        'Amount',
+        'Current Category %',
+        'Target Category %',
+        'Deviation',
+        'Projected Category %',
+        'Projected Deviation'
+      ];
+      
+      const csvRows = [
+        headers.join(','),
+        ...suggestionsWithDetails.map(suggestion => {
+          return [
+            `"${suggestion.symbol}"`,
+            `"${suggestion.category}"`,
+            `"${suggestion.action}"`,
+            suggestion.shares,
+            parseFloat(suggestion.amount).toFixed(2),
+            `${suggestion.currentCategoryPercentage}%`,
+            `${suggestion.targetCategoryPercentage}%`,
+            `${suggestion.deviation}%`,
+            `${suggestion.projectedCategoryPercentage}%`,
+            `${suggestion.projectedDeviation}%`
+          ].join(',');
+        })
+      ];
+      
+      const csvContent = csvRows.join('\n');
+      setCsvExportData(csvContent);
+      setShowCsvModal(true);
     }
-    
-    // Calculate shares for each suggestion
-    const suggestionsWithShares = suggestions.map(suggestion => {
-      const symbol = suggestion.action.split(' ')[1];  // Extract symbol from "BUY AAPL" or "SELL AAPL"
-      const shares = symbol && stockPrices[symbol] 
-        ? Math.floor(suggestion.amount / stockPrices[symbol])
-        : 0;
-      return {
-        ...suggestion,
-        shares,
-        symbol
-      };
-    });
-    
-    const headers = ['Category', 'Symbol', 'Action', 'Shares', 'Amount', 'Percentage'];
-    const csvRows = [
-      headers.join(','),
-      ...suggestionsWithShares.map(suggestion => {
-        return [
-          `"${suggestion.category}"`,
-          `"${suggestion.symbol || ''}"`,
-          `"${suggestion.action}"`,
-          suggestion.shares,
-          parseFloat(suggestion.amount).toFixed(2),
-          suggestion.percent
-        ].join(',');
-      })
-    ];
-    
-    const csvContent = csvRows.join('\n');
-    setCsvExportData(csvContent);
-    setShowCsvModal(true);
   };
 
   const downloadCsv = () => {
@@ -1324,62 +1387,6 @@ const PortfolioComparison = ({
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
     setShowCsvModal(false);
-  };
-
-  // Handle exporting buy-only suggestions to CSV
-  const exportBuyOnlySuggestionsToCsv = () => {
-    if (!selectedModelPortfolio || recalculatedSuggestions.length === 0) {
-      alert('No buy-only rebalancing data to export');
-      return;
-    }
-    
-    // Helper function to convert array of objects to CSV
-    const convertToCSV = (objArray) => {
-      const array = typeof objArray !== 'object' ? JSON.parse(objArray) : objArray;
-      let str = '';
-      
-      // Add header row
-      const headers = Object.keys(array[0]);
-      str += headers.join(',') + '\r\n';
-      
-      // Add data rows
-      for (let i = 0; i < array.length; i++) {
-        let line = '';
-        for (let j = 0; j < headers.length; j++) {
-          if (line !== '') line += ',';
-          // Wrap values with commas in quotes
-          const value = array[i][headers[j]];
-          line += typeof value === 'string' && value.includes(',') ? `"${value}"` : value;
-        }
-        str += line + '\r\n';
-      }
-      
-      return str;
-    };
-    
-    // Format buy-only data for CSV (only selected trades)
-    const buyOnlyData = recalculatedSuggestions.map(item => ({
-      Symbol: item.symbol,
-      Category: item.category,
-      'Shares to Buy': item.shares,
-      'Investment Amount': `$${formatNumber(item.value)}`,
-      'Percent of New Money': `${item.allocationPercent}%`,
-      'Current Allocation': `${item.currentPercentage}%`,
-      'Target Allocation': `${item.targetPercentage}%`,
-      'Deviation': `${item.deviation}%`
-    }));
-    
-    const csvString = convertToCSV(buyOnlyData);
-    const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `buy-only-rebalance-${selectedModelPortfolio.replace(/\s+/g, '-')}-${new Date().toISOString().split('T')[0]}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
   };
 
   // Chart options
@@ -1489,11 +1496,9 @@ const PortfolioComparison = ({
                               if (showWhatIfAnalysis) setShowWhatIfAnalysis(false);
                               if (showSellBuyRebalancing) setShowSellBuyRebalancing(false);
                               if (!showBuyOnlyRebalancing) {
-                                // When turning on buy-only rebalancing, reset simulated allocation
                                 setNewInvestmentAmount('');
                                 setBuyOnlySuggestions([]);
                               } else {
-                                // When turning off buy-only rebalancing, reset back to current allocation
                                 setSimulatedAllocation(currentAllocation);
                                 setSimulatedDeviations(deviations);
                               }
@@ -1696,15 +1701,6 @@ const PortfolioComparison = ({
                         
                         {rebalanceActions.length > 0 ? (
                           <>
-                            <div className="d-flex justify-content-end mb-2">
-                              <Button 
-                                variant="outline-success" 
-                                size="sm"
-                                onClick={prepareCsvExport}
-                              >
-                                Export to CSV
-                              </Button>
-                            </div>
                             <div className="table-responsive">
                               <Table striped bordered hover size="sm">
                                 <thead>
@@ -1931,7 +1927,6 @@ const PortfolioComparison = ({
                                     });
                                     setSelectedTrades(newSelectedTrades);
                                     
-                                    // Use original suggestions when all are selected
                                     const updatedSuggestions = updateSuggestionProjections(buyOnlySuggestions);
                                     setRecalculatedSuggestions(updatedSuggestions);
                                     recalculateProjectionsForSelectedTrades(updatedSuggestions);
@@ -1946,7 +1941,6 @@ const PortfolioComparison = ({
                                     setSelectedTrades({});
                                     setRecalculatedSuggestions([]);
                                     
-                                    // Reset to current allocation when none are selected
                                     setSimulatedAllocation(currentAllocation);
                                     setSimulatedDeviations(deviations);
                                   }}
@@ -1954,13 +1948,6 @@ const PortfolioComparison = ({
                                   Deselect All
                                 </Button>
                               </div>
-                              <Button 
-                                variant="outline-success" 
-                                size="sm"
-                                onClick={exportBuyOnlySuggestionsToCsv}
-                              >
-                                Export to CSV
-                              </Button>
                             </div>
                             <div className="table-responsive">
                               <Table striped bordered hover size="sm">
