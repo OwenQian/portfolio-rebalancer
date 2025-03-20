@@ -31,7 +31,13 @@ const PortfolioComparison = ({
   const [whatIfAction, setWhatIfAction] = useState('buy');
   const [whatIfAmount, setWhatIfAmount] = useState('');
   const [whatIfDirty, setWhatIfDirty] = useState(false);
-  
+  const [whatIfTrades, setWhatIfTrades] = useState([]);
+  const [currentTrade, setCurrentTrade] = useState({
+    category: '',
+    action: 'buy',
+    amount: ''
+  });
+
   // Sell-Buy rebalancing state
   const [showSellBuyRebalancing, setShowSellBuyRebalancing] = useState(false);
   
@@ -136,17 +142,14 @@ const PortfolioComparison = ({
     return deviations;
   }, [categories]);
 
-  // Simulate allocation changes based on buying/selling in a category
+  // Simulate allocation changes based on multiple trades
   const simulateAllocationChange = useCallback(() => {
-    if (!whatIfCategory || !whatIfAmount || isNaN(parseFloat(whatIfAmount)) || parseFloat(whatIfAmount) <= 0) {
-      // Reset to current allocation if invalid input
+    if (whatIfTrades.length === 0) {
+      // Reset to current allocation if no trades
       setSimulatedAllocation(currentAllocation);
       setSimulatedDeviations(deviations);
       return;
     }
-    
-    const amount = parseFloat(whatIfAmount);
-    const isBuying = whatIfAction === 'buy';
     
     // Create a copy of the current allocation values (not percentages)
     const categoryValues = {};
@@ -157,28 +160,37 @@ const PortfolioComparison = ({
       categoryValues[categoryId] = (currentAllocation[categoryId] / 100) * totalPortfolioValue;
     });
     
-    // Apply the change to the selected category
-    if (isBuying) {
-      categoryValues[whatIfCategory] = (categoryValues[whatIfCategory] || 0) + amount;
-      newTotalValue += amount;
-    } else {
-      // Selling - make sure we don't sell more than we have
-      const currentCategoryValue = (currentAllocation[whatIfCategory] / 100) * totalPortfolioValue;
-      if (amount > currentCategoryValue) {
-        // Can't sell more than what exists in the category
-        categoryValues[whatIfCategory] = 0;
-        newTotalValue -= currentCategoryValue;
+    // Apply all trades
+    whatIfTrades.forEach(trade => {
+      const amount = parseFloat(trade.amount);
+      if (!trade.category || !trade.amount || isNaN(amount) || amount <= 0) return;
+      
+      const isBuying = trade.action === 'buy';
+      
+      if (isBuying) {
+        categoryValues[trade.category] = (categoryValues[trade.category] || 0) + amount;
+        newTotalValue += amount;
       } else {
-        categoryValues[whatIfCategory] = currentCategoryValue - amount;
-        newTotalValue -= amount;
+        // Selling - make sure we don't sell more than we have
+        const currentCategoryValue = (currentAllocation[trade.category] / 100) * totalPortfolioValue;
+        if (amount > currentCategoryValue) {
+          // Can't sell more than what exists in the category
+          categoryValues[trade.category] = 0;
+          newTotalValue -= currentCategoryValue;
+        } else {
+          categoryValues[trade.category] = currentCategoryValue - amount;
+          newTotalValue -= amount;
+        }
       }
-    }
+    });
     
     // Calculate new percentages based on new total value
     const newAllocation = {};
-    Object.keys(categoryValues).forEach(categoryId => {
-      newAllocation[categoryId] = (categoryValues[categoryId] / newTotalValue) * 100;
-    });
+    if (newTotalValue > 0) {
+      Object.keys(categoryValues).forEach(categoryId => {
+        newAllocation[categoryId] = (categoryValues[categoryId] / newTotalValue) * 100;
+      });
+    }
     
     // Calculate new deviations
     const newDeviations = calculateDeviations(modelAllocation, newAllocation);
@@ -186,17 +198,53 @@ const PortfolioComparison = ({
     setSimulatedAllocation(newAllocation);
     setSimulatedDeviations(newDeviations);
     setWhatIfDirty(true);
-  }, [whatIfCategory, whatIfAction, whatIfAmount, currentAllocation, deviations, calculateDeviations, modelAllocation, totalPortfolioValue]);
+  }, [whatIfTrades, currentAllocation, deviations, calculateDeviations, modelAllocation, totalPortfolioValue]);
 
   // Reset simulation to current allocation
   const resetSimulation = useCallback(() => {
-    setWhatIfCategory('');
-    setWhatIfAction('buy');
-    setWhatIfAmount('');
+    setWhatIfTrades([]);
+    setCurrentTrade({
+      category: '',
+      action: 'buy',
+      amount: ''
+    });
     setSimulatedAllocation(currentAllocation);
     setSimulatedDeviations(deviations);
     setWhatIfDirty(false);
   }, [currentAllocation, deviations]);
+
+  // Add current trade to the list
+  const addTrade = () => {
+    if (currentTrade.category && currentTrade.amount) {
+      setWhatIfTrades([...whatIfTrades, { ...currentTrade }]);
+      setCurrentTrade({
+        category: '',
+        action: 'buy',
+        amount: ''
+      });
+    }
+  };
+
+  // Remove a trade
+  const removeTrade = (index) => {
+    const newTrades = whatIfTrades.filter((_, i) => i !== index);
+    setWhatIfTrades(newTrades);
+  };
+
+  // Quick add amount to current trade
+  const quickAddAmount = (amount) => {
+    setCurrentTrade(prev => ({
+      ...prev,
+      amount: (parseFloat(prev.amount) || 0) + amount
+    }));
+  };
+
+  // Run simulation when trades change
+  useEffect(() => {
+    if (showWhatIfAnalysis) {
+      simulateAllocationChange();
+    }
+  }, [whatIfTrades, showWhatIfAnalysis, simulateAllocationChange]);
 
   // Generate rebalance suggestions
   const generateRebalanceSuggestions = () => {
@@ -795,13 +843,6 @@ const PortfolioComparison = ({
     return generateSpecificSuggestions();
   }, [accounts, categories, modelPortfolios, selectedModelPortfolio, stockCategories, stockPrices, totalPortfolioValue, calculateDeviations]);
   
-  // Run simulation when parameters change
-  useEffect(() => {
-    if (showWhatIfAnalysis && whatIfCategory) {
-      simulateAllocationChange();
-    }
-  }, [whatIfCategory, whatIfAction, whatIfAmount, showWhatIfAnalysis, simulateAllocationChange]);
-
   // Calculate buy-only rebalancing suggestions when investment amount changes
   useEffect(() => {
     if (showBuyOnlyRebalancing && newInvestmentAmount) {
@@ -1468,15 +1509,15 @@ const PortfolioComparison = ({
                       <Card.Body>
                         <h5 className="mb-3">What-If Analysis</h5>
                         <p className="small">
-                          Simulate how buying or selling assets in a specific category would change your portfolio allocation.
+                          Simulate how buying or selling assets in specific categories would change your portfolio allocation.
                         </p>
                         <Row>
                           <Col md={3}>
                             <Form.Group className="mb-3">
                               <Form.Label>Category</Form.Label>
                               <Form.Select
-                                value={whatIfCategory}
-                                onChange={(e) => setWhatIfCategory(e.target.value)}
+                                value={currentTrade.category}
+                                onChange={(e) => setCurrentTrade(prev => ({ ...prev, category: e.target.value }))}
                               >
                                 <option value="">Select category</option>
                                 {categories.map(category => (
@@ -1488,12 +1529,12 @@ const PortfolioComparison = ({
                               </Form.Select>
                             </Form.Group>
                           </Col>
-                          <Col md={3}>
+                          <Col md={2}>
                             <Form.Group className="mb-3">
                               <Form.Label>Action</Form.Label>
                               <Form.Select
-                                value={whatIfAction}
-                                onChange={(e) => setWhatIfAction(e.target.value)}
+                                value={currentTrade.action}
+                                onChange={(e) => setCurrentTrade(prev => ({ ...prev, action: e.target.value }))}
                               >
                                 <option value="buy">Buy</option>
                                 <option value="sell">Sell</option>
@@ -1508,32 +1549,118 @@ const PortfolioComparison = ({
                                 <Form.Control
                                   type="number"
                                   placeholder="e.g., 10000"
-                                  value={whatIfAmount}
-                                  onChange={(e) => setWhatIfAmount(e.target.value)}
+                                  value={currentTrade.amount}
+                                  onChange={(e) => setCurrentTrade(prev => ({ ...prev, amount: e.target.value }))}
                                   min="0"
                                   step="100"
                                 />
                               </InputGroup>
                             </Form.Group>
                           </Col>
-                          <Col md={2} className="d-flex align-items-end">
+                          <Col md={3} className="d-flex align-items-end mb-3">
+                            <Button 
+                              variant="primary"
+                              size="sm"
+                              onClick={addTrade}
+                              disabled={!currentTrade.category || !currentTrade.amount}
+                              className="me-2"
+                            >
+                              Add Trade
+                            </Button>
                             <Button 
                               variant="outline-secondary" 
-                              className="mb-3"
+                              size="sm"
                               onClick={resetSimulation}
                             >
-                              Reset
+                              Reset All
                             </Button>
                           </Col>
                         </Row>
+
+                        <Row className="mb-3">
+                          <Col>
+                            <div className="d-flex gap-2">
+                              <Button 
+                                variant="outline-secondary" 
+                                size="sm"
+                                onClick={() => quickAddAmount(10000)}
+                              >
+                                +$10,000
+                              </Button>
+                              <Button 
+                                variant="outline-secondary" 
+                                size="sm"
+                                onClick={() => quickAddAmount(25000)}
+                              >
+                                +$25,000
+                              </Button>
+                              <Button 
+                                variant="outline-secondary" 
+                                size="sm"
+                                onClick={() => quickAddAmount(100000)}
+                              >
+                                +$100,000
+                              </Button>
+                            </div>
+                          </Col>
+                        </Row>
+
+                        {whatIfTrades.length > 0 && (
+                          <div className="table-responsive mb-3">
+                            <Table striped bordered hover size="sm">
+                              <thead>
+                                <tr>
+                                  <th>Category</th>
+                                  <th>Action</th>
+                                  <th>Amount</th>
+                                  <th>Action</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {whatIfTrades.map((trade, index) => (
+                                  <tr key={index}>
+                                    <td>{categories.find(c => c.id === trade.category)?.name || 'Uncategorized'}</td>
+                                    <td>{trade.action === 'buy' ? 'Buy' : 'Sell'}</td>
+                                    <td>${formatNumber(trade.amount)}</td>
+                                    <td>
+                                      <Button
+                                        variant="outline-danger"
+                                        size="sm"
+                                        onClick={() => removeTrade(index)}
+                                      >
+                                        Remove
+                                      </Button>
+                                    </td>
+                                  </tr>
+                                ))}
+                                <tr className="table-secondary">
+                                  <td colSpan="2"><strong>Total Impact</strong></td>
+                                  <td colSpan="2">
+                                    <strong>
+                                      ${formatNumber(
+                                        whatIfTrades.reduce((sum, trade) => {
+                                          const amount = parseFloat(trade.amount) || 0;
+                                          return sum + (trade.action === 'buy' ? amount : -amount);
+                                        }, 0)
+                                      )}
+                                    </strong>
+                                  </td>
+                                </tr>
+                              </tbody>
+                            </Table>
+                          </div>
+                        )}
                         
                         {whatIfDirty && (
                           <Alert variant="info">
                             <strong>Simulation Result:</strong> Your portfolio would be $
-                            {whatIfAction === 'buy' 
-                              ? formatNumber(totalPortfolioValue + parseFloat(whatIfAmount || 0))
-                              : formatNumber(totalPortfolioValue - Math.min(parseFloat(whatIfAmount || 0), (currentAllocation[whatIfCategory] / 100) * totalPortfolioValue))}
-                            {' '}after {whatIfAction === 'buy' ? 'buying' : 'selling'} ${formatNumber(whatIfAmount)} in the {categories.find(c => c.id === whatIfCategory)?.name || 'Uncategorized'} category.
+                            {formatNumber(
+                              totalPortfolioValue + whatIfTrades.reduce((sum, trade) => {
+                                const amount = parseFloat(trade.amount) || 0;
+                                return sum + (trade.action === 'buy' ? amount : -amount);
+                              }, 0)
+                            )}
+                            {' '}after applying all trades.
                           </Alert>
                         )}
                       </Card.Body>
