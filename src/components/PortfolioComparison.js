@@ -32,6 +32,9 @@ const PortfolioComparison = ({
   const [whatIfAmount, setWhatIfAmount] = useState('');
   const [whatIfDirty, setWhatIfDirty] = useState(false);
   
+  // Sell-Buy rebalancing state
+  const [showSellBuyRebalancing, setShowSellBuyRebalancing] = useState(false);
+  
   // Buy-only rebalancing states
   const [showBuyOnlyRebalancing, setShowBuyOnlyRebalancing] = useState(false);
   const [newInvestmentAmount, setNewInvestmentAmount] = useState('');
@@ -195,63 +198,129 @@ const PortfolioComparison = ({
     setWhatIfDirty(false);
   }, [currentAllocation, deviations]);
 
-  // Generate rebalancing suggestions
-  const generateRebalanceActions = useCallback(() => {
-    if (!selectedModelPortfolio || totalPortfolioValue <= 0) return [];
+  // Generate rebalance suggestions
+  const generateRebalanceSuggestions = () => {
+    if (!selectedModelPortfolio) return [];
     
-    const actions = [];
+    const totalValue = totalPortfolioValue;
+    const suggestions = [];
     
-    categories.forEach(category => {
-      const deviation = deviations[category.id] || 0;
-      
-      // Only suggest actions for significant deviations (greater than 1%)
-      if (Math.abs(deviation) > 1) {
-        const amountDifference = (deviation / 100) * totalPortfolioValue;
+    // Get the selected model portfolio object
+    const modelPortfolioObj = modelPortfolios.find(p => p.name === selectedModelPortfolio);
+    if (!modelPortfolioObj) return [];
+    
+    // Calculate current positions by symbol across all accounts
+    const symbolTotals = {};
+    accounts.forEach(account => {
+      account.positions.forEach(position => {
+        const symbol = position.symbol;
+        const price = stockPrices[symbol] || 0;
+        const value = position.shares * price;
         
-        if (deviation > 0) {
-          // Overweight - need to reduce
-          actions.push({
-            category: category.name,
-            action: 'Sell',
-            percent: deviation.toFixed(2),
-            amount: Math.abs(amountDifference).toFixed(2)
-          });
+        if (!symbolTotals[symbol]) {
+          symbolTotals[symbol] = {
+            symbol,
+            shares: position.shares,
+            value,
+            price,
+            category: stockCategories[symbol] || 'uncategorized'
+          };
         } else {
-          // Underweight - need to increase
-          actions.push({
-            category: category.name,
-            action: 'Buy',
-            percent: Math.abs(deviation).toFixed(2),
-            amount: Math.abs(amountDifference).toFixed(2)
-          });
+          symbolTotals[symbol].value += value;
+          symbolTotals[symbol].shares += position.shares;
+        }
+      });
+    });
+    
+    // Group symbols by category for decision making
+    const categorizedSymbols = {};
+    Object.values(symbolTotals).forEach(item => {
+      if (!categorizedSymbols[item.category]) {
+        categorizedSymbols[item.category] = [];
+      }
+      categorizedSymbols[item.category].push(item);
+    });
+    
+    // Sort each category's symbols by value (ascending for selling, descending for buying)
+    Object.keys(categorizedSymbols).forEach(category => {
+      categorizedSymbols[category].sort((a, b) => a.value - b.value); // Ascending for selling lowest value first
+    });
+    
+    // First handle all sells (overweight positions)
+    Object.keys(deviations).forEach(categoryId => {
+      const deviation = deviations[categoryId];
+      if (deviation > 0.5) { // Only sell if meaningfully overweight
+        const amount = (deviation / 100) * totalValue;
+        const categoryName = categories.find(c => c.id === categoryId)?.name || 'Uncategorized';
+        
+        if (categorizedSymbols[categoryId] && categorizedSymbols[categoryId].length > 0) {
+          const positionToSell = categorizedSymbols[categoryId][0]; // Smallest position first
+          const sharesToSell = Math.floor(amount / positionToSell.price);
+          
+          if (sharesToSell > 0) {
+            suggestions.push({
+              category: categoryName,
+              action: `SELL ${positionToSell.symbol}`,
+              percent: deviation.toFixed(2),
+              amount: sharesToSell * positionToSell.price
+            });
+          }
         }
       }
     });
     
-    // Also check uncategorized assets
-    const uncategorizedDeviation = deviations['uncategorized'] || 0;
-    if (Math.abs(uncategorizedDeviation) > 1) {
-      const amountDifference = (uncategorizedDeviation / 100) * totalPortfolioValue;
-      
-      if (uncategorizedDeviation > 0) {
-        actions.push({
-          category: 'Uncategorized',
-          action: 'Sell',
-          percent: uncategorizedDeviation.toFixed(2),
-          amount: Math.abs(amountDifference).toFixed(2)
-        });
-      } else {
-        actions.push({
-          category: 'Uncategorized',
-          action: 'Buy',
-          percent: Math.abs(uncategorizedDeviation).toFixed(2),
-          amount: Math.abs(amountDifference).toFixed(2)
-        });
+    // Then handle all buys (underweight positions)
+    Object.keys(deviations).forEach(categoryId => {
+      const deviation = deviations[categoryId];
+      if (deviation < -0.5) { // Only buy if meaningfully underweight
+        const amount = (Math.abs(deviation) / 100) * totalValue;
+        const categoryName = categories.find(c => c.id === categoryId)?.name || 'Uncategorized';
+        
+        // Find positions that already exist in this category (if any)
+        if (categorizedSymbols[categoryId] && categorizedSymbols[categoryId].length > 0) {
+          // Sort in descending order for buying (largest position first)
+          const buyPositions = [...categorizedSymbols[categoryId]].sort((a, b) => b.value - a.value);
+          const positionToBuy = buyPositions[0]; // Largest position first
+          const sharesToBuy = Math.floor(amount / positionToBuy.price);
+          
+          if (sharesToBuy > 0) {
+            suggestions.push({
+              category: categoryName,
+              action: `BUY ${positionToBuy.symbol}`,
+              percent: Math.abs(deviation).toFixed(2),
+              amount: sharesToBuy * positionToBuy.price
+            });
+          }
+        } else {
+          // If no positions exist in this category, look for stocks in model portfolio
+          const modelStocksInCategory = modelPortfolioObj.stocks.filter(
+            stock => stockCategories[stock.symbol] === categoryId
+          );
+          
+          if (modelStocksInCategory.length > 0) {
+            // Sort by percentage allocation in model (descending)
+            modelStocksInCategory.sort((a, b) => b.percentage - a.percentage);
+            const recommendedStock = modelStocksInCategory[0];
+            const price = stockPrices[recommendedStock.symbol] || 0;
+            
+            if (price > 0) {
+              const sharesToBuy = Math.floor(amount / price);
+              if (sharesToBuy > 0) {
+                suggestions.push({
+                  category: categoryName,
+                  action: `BUY ${recommendedStock.symbol}`,
+                  percent: Math.abs(deviation).toFixed(2),
+                  amount: sharesToBuy * price
+                });
+              }
+            }
+          }
+        }
       }
-    }
+    });
     
-    return actions;
-  }, [categories, deviations, selectedModelPortfolio, totalPortfolioValue]);
+    return suggestions;
+  };
 
   // Generate specific stock-level rebalancing suggestions
   const generateSpecificSuggestions = useCallback(() => {
@@ -353,7 +422,7 @@ const PortfolioComparison = ({
       }
       return parseFloat(b.value) - parseFloat(a.value);
     });
-  }, [accounts, categories, modelPortfolios, selectedModelPortfolio, stockCategories, stockPrices, totalPortfolioValue]);
+  }, [accounts, categories, modelPortfolios, selectedModelPortfolio, stockCategories, stockPrices, totalPortfolioValue, calculateDeviations]);
 
   // Generate buy-only rebalancing suggestions
   const generateBuyOnlySuggestions = useCallback((investmentAmount) => {
@@ -659,10 +728,73 @@ const PortfolioComparison = ({
 
   // Update rebalance actions when deviations change
   useEffect(() => {
-    setRebalanceActions(generateRebalanceActions());
-    setSpecificRebalancingSuggestions(generateSpecificSuggestions());
-  }, [deviations, totalPortfolioValue, selectedModelPortfolio, generateRebalanceActions, generateSpecificSuggestions]);
-
+    if (selectedModelPortfolio && Object.keys(deviations).length > 0) {
+      const suggestions = generateRebalanceSuggestions();
+      setRebalanceActions(suggestions);
+      
+      // Only calculate simulated allocation if sell-buy rebalancing is shown
+      if (showSellBuyRebalancing) {
+        // Calculate simulated allocation after applying all trades
+        const categoryValues = {};
+        let newTotalValue = totalPortfolioValue;
+        
+        // Initialize category values based on current allocation
+        Object.keys(currentAllocation).forEach(categoryId => {
+          categoryValues[categoryId] = (currentAllocation[categoryId] / 100) * totalPortfolioValue;
+        });
+        
+        // First apply all sell trades (they affect the total value)
+        suggestions.forEach(suggestion => {
+          if (suggestion.action.startsWith('SELL')) {
+            const categoryName = suggestion.category;
+            const categoryId = categories.find(c => c.name === categoryName)?.id || 'uncategorized';
+            const amount = suggestion.amount;
+            
+            // Reduce category value and total value
+            categoryValues[categoryId] = Math.max(0, categoryValues[categoryId] - amount);
+            newTotalValue -= amount;
+          }
+        });
+        
+        // Then apply all buy trades
+        suggestions.forEach(suggestion => {
+          if (suggestion.action.startsWith('BUY')) {
+            const categoryName = suggestion.category;
+            const categoryId = categories.find(c => c.name === categoryName)?.id || 'uncategorized';
+            const amount = suggestion.amount;
+            
+            // Increase category value and total value
+            categoryValues[categoryId] = (categoryValues[categoryId] || 0) + amount;
+            newTotalValue += amount;
+          }
+        });
+        
+        // Calculate new percentages based on final total value
+        const simulatedCategoryValues = {};
+        if (newTotalValue > 0) {
+          Object.keys(categoryValues).forEach(categoryId => {
+            simulatedCategoryValues[categoryId] = (categoryValues[categoryId] / newTotalValue) * 100;
+          });
+        }
+        
+        // Calculate new deviations
+        const newDeviations = calculateDeviations(modelAllocation, simulatedCategoryValues);
+        
+        setSimulatedAllocation(simulatedCategoryValues);
+        setSimulatedDeviations(newDeviations);
+      }
+    }
+  }, [deviations, totalPortfolioValue, selectedModelPortfolio, categories, modelAllocation, calculateDeviations, currentAllocation, showSellBuyRebalancing]);
+  
+  // Memoize generateRebalanceSuggestions and generateSpecificSuggestions
+  const memoizedGenerateRebalanceSuggestions = useCallback(() => {
+    return generateRebalanceSuggestions();
+  }, [selectedModelPortfolio, totalPortfolioValue, deviations, accounts, categories, modelPortfolios, stockCategories, stockPrices]);
+  
+  const memoizedGenerateSpecificSuggestions = useCallback(() => {
+    return generateSpecificSuggestions();
+  }, [accounts, categories, modelPortfolios, selectedModelPortfolio, stockCategories, stockPrices, totalPortfolioValue, calculateDeviations]);
+  
   // Run simulation when parameters change
   useEffect(() => {
     if (showWhatIfAnalysis && whatIfCategory) {
@@ -1029,85 +1161,105 @@ const PortfolioComparison = ({
     };
   };
 
-  // Handle exporting data to JSON
+  // Use memoized functions in export functions
   const exportToJson = () => {
     if (!selectedModelPortfolio) return;
     
+    // Get the selected model portfolio object
+    const modelPortfolioObj = modelPortfolios.find(p => p.name === selectedModelPortfolio);
+    if (!modelPortfolioObj) return;
+    
     const data = {
-      modelPortfolio: modelPortfolios.find(p => p.name === selectedModelPortfolio),
-      currentAllocation,
-      modelAllocation,
-      deviations,
-      rebalanceActions,
-      specificSuggestions: specificRebalancingSuggestions,
-      totalPortfolioValue
+      modelPortfolio: selectedModelPortfolio,
+      exportDate: new Date().toISOString(),
+      allocations: {
+        model: modelAllocation,
+        current: currentAllocation,
+        deviation: deviations
+      },
+      rebalanceSuggestions: memoizedGenerateRebalanceSuggestions(),
+      currentHoldings: accounts.flatMap(account => {
+        return account.positions.map(position => {
+          const symbol = position.symbol;
+          const price = stockPrices[symbol] || 0;
+          const value = position.shares * price;
+          const percentage = totalPortfolioValue > 0 ? (value / totalPortfolioValue) * 100 : 0;
+          
+          return {
+            symbol,
+            account: account.name,
+            category: categories.find(c => c.id === stockCategories[symbol])?.name || 'Uncategorized',
+            shares: position.shares,
+            price,
+            value,
+            percentage
+          };
+        });
+      }),
+      modelHoldings: modelPortfolioObj.stocks.map(stock => {
+        return {
+          symbol: stock.symbol,
+          category: categories.find(c => c.id === stockCategories[stock.symbol])?.name || 'Uncategorized',
+          percentage: stock.percentage
+        };
+      })
     };
     
-    const jsonString = JSON.stringify(data, null, 2);
-    const blob = new Blob([jsonString], { type: 'application/json' });
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
-    
     const a = document.createElement('a');
     a.href = url;
-    a.download = `portfolio-comparison-${selectedModelPortfolio}-${new Date().toISOString().slice(0, 10)}.json`;
+    a.download = `portfolio-comparison-${selectedModelPortfolio.replace(/\s+/g, '-')}-${new Date().toISOString().split('T')[0]}.json`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
   };
   
-  // Handle exporting data to CSV
+  // Export rebalancing suggestions to CSV
   const exportToCsv = () => {
     if (!selectedModelPortfolio) return;
     
-    // Helper function to convert array of objects to CSV
-    const convertToCSV = (objArray) => {
-      const array = typeof objArray !== 'object' ? JSON.parse(objArray) : objArray;
-      let str = '';
-      
-      // Add header row
-      const headers = Object.keys(array[0]);
-      str += headers.join(',') + '\r\n';
-      
-      // Add data rows
-      for (let i = 0; i < array.length; i++) {
-        let line = '';
-        for (let j = 0; j < headers.length; j++) {
-          if (line !== '') line += ',';
-          // Wrap values with commas in quotes
-          const value = array[i][headers[j]];
-          line += typeof value === 'string' && value.includes(',') ? `"${value}"` : value;
-        }
-        str += line + '\r\n';
-      }
-      
-      return str;
-    };
-    
-    // Format rebalance data for CSV
-    const rebalanceData = specificRebalancingSuggestions.map(item => ({
-      Symbol: item.symbol,
-      Action: item.action,
-      Shares: item.shares,
-      Value: `$${formatNumber(item.value)}`,
-      Category: item.category,
-      CurrentAllocation: `${item.currentPercentage}%`,
-      TargetAllocation: `${item.targetPercentage}%`,
-      Deviation: `${item.deviation}%`
-    }));
-    
-    if (rebalanceData.length === 0) {
-      alert('No rebalancing data to export');
+    const suggestions = memoizedGenerateRebalanceSuggestions();
+    if (suggestions.length === 0) {
+      alert('No rebalancing suggestions available to export.');
       return;
     }
     
-    const csvString = convertToCSV(rebalanceData);
-    const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
+    // Calculate shares for each suggestion
+    const suggestionsWithShares = suggestions.map(suggestion => {
+      const symbol = suggestion.action.split(' ')[1];  // Extract symbol from "BUY AAPL" or "SELL AAPL"
+      const shares = symbol && stockPrices[symbol] 
+        ? Math.floor(suggestion.amount / stockPrices[symbol])
+        : 0;
+      return {
+        ...suggestion,
+        shares,
+        symbol
+      };
+    });
     
+    const headers = ['Category', 'Symbol', 'Action', 'Shares', 'Amount', 'Percentage'];
+    const csvRows = [
+      headers.join(','),
+      ...suggestionsWithShares.map(suggestion => {
+        return [
+          `"${suggestion.category}"`,
+          `"${suggestion.symbol || ''}"`,
+          `"${suggestion.action}"`,
+          suggestion.shares,
+          parseFloat(suggestion.amount).toFixed(2),
+          suggestion.percent
+        ].join(',');
+      })
+    ];
+    
+    const csvContent = csvRows.join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `rebalance-suggestions-${selectedModelPortfolio}-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `rebalance-suggestions-${selectedModelPortfolio.replace(/\s+/g, '-')}-${new Date().toISOString().split('T')[0]}.csv`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -1163,7 +1315,7 @@ const PortfolioComparison = ({
     
     const a = document.createElement('a');
     a.href = url;
-    a.download = `buy-only-rebalance-${selectedModelPortfolio}-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `buy-only-rebalance-${selectedModelPortfolio.replace(/\s+/g, '-')}-${new Date().toISOString().split('T')[0]}.csv`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -1247,10 +1399,27 @@ const PortfolioComparison = ({
                             onClick={() => {
                               setShowWhatIfAnalysis(!showWhatIfAnalysis);
                               if (showBuyOnlyRebalancing) setShowBuyOnlyRebalancing(false);
+                              if (showSellBuyRebalancing) setShowSellBuyRebalancing(false);
                             }}
                             className="me-2"
                           >
                             {showWhatIfAnalysis ? "Hide What-If Analysis" : "What-If Analysis"}
+                          </Button>
+                          <Button 
+                            variant={showSellBuyRebalancing ? "secondary" : "info"}
+                            size="sm"
+                            onClick={() => {
+                              setShowSellBuyRebalancing(!showSellBuyRebalancing);
+                              if (showWhatIfAnalysis) setShowWhatIfAnalysis(false);
+                              if (showBuyOnlyRebalancing) setShowBuyOnlyRebalancing(false);
+                              if (!showSellBuyRebalancing) {
+                                setSimulatedAllocation(currentAllocation);
+                                setSimulatedDeviations(deviations);
+                              }
+                            }}
+                            className="me-2"
+                          >
+                            {showSellBuyRebalancing ? "Hide Sell-Buy Rebalance" : "Sell-Buy Rebalance"}
                           </Button>
                           <Button 
                             variant={showBuyOnlyRebalancing ? "secondary" : "info"}
@@ -1258,6 +1427,7 @@ const PortfolioComparison = ({
                             onClick={() => {
                               setShowBuyOnlyRebalancing(!showBuyOnlyRebalancing);
                               if (showWhatIfAnalysis) setShowWhatIfAnalysis(false);
+                              if (showSellBuyRebalancing) setShowSellBuyRebalancing(false);
                               if (!showBuyOnlyRebalancing) {
                                 // When turning on buy-only rebalancing, reset simulated allocation
                                 setNewInvestmentAmount('');
@@ -1364,6 +1534,167 @@ const PortfolioComparison = ({
                               ? formatNumber(totalPortfolioValue + parseFloat(whatIfAmount || 0))
                               : formatNumber(totalPortfolioValue - Math.min(parseFloat(whatIfAmount || 0), (currentAllocation[whatIfCategory] / 100) * totalPortfolioValue))}
                             {' '}after {whatIfAction === 'buy' ? 'buying' : 'selling'} ${formatNumber(whatIfAmount)} in the {categories.find(c => c.id === whatIfCategory)?.name || 'Uncategorized'} category.
+                          </Alert>
+                        )}
+                      </Card.Body>
+                    </Card>
+                  )}
+                  
+                  {showSellBuyRebalancing && (
+                    <Card className="mb-4 bg-light">
+                      <Card.Body>
+                        <h5 className="mb-3">Sell-Buy Rebalancing</h5>
+                        <p className="small">
+                          This shows specific trades needed to rebalance your portfolio by selling overweight positions and buying underweight positions.
+                        </p>
+                        
+                        {rebalanceActions.length > 0 ? (
+                          <>
+                            <div className="d-flex justify-content-end mb-2">
+                              <Button 
+                                variant="outline-success" 
+                                size="sm"
+                                onClick={exportToCsv}
+                              >
+                                Export to CSV
+                              </Button>
+                            </div>
+                            <div className="table-responsive">
+                              <Table striped bordered hover size="sm">
+                                <thead>
+                                  <tr>
+                                    <th>Category</th>
+                                    <th>Action</th>
+                                    <th>Shares</th>
+                                    <th>Amount</th>
+                                    <th>Percentage</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {rebalanceActions.map((suggestion, index) => {
+                                    const symbol = suggestion.action.split(' ')[1];  // Extract symbol from "BUY AAPL" or "SELL AAPL"
+                                    const shares = symbol && stockPrices[symbol] 
+                                      ? Math.floor(suggestion.amount / stockPrices[symbol])
+                                      : 0;
+                                    
+                                    return (
+                                      <tr key={index} className={suggestion.action.startsWith('SELL') ? 'table-danger' : 'table-success'}>
+                                        <td>{suggestion.category}</td>
+                                        <td>{suggestion.action}</td>
+                                        <td>{shares}</td>
+                                        <td>${formatNumber(suggestion.amount)}</td>
+                                        <td>{suggestion.percent}%</td>
+                                      </tr>
+                                    );
+                                  })}
+                                  <tr className="table-secondary">
+                                    <td colSpan={3}><strong>Total Value</strong></td>
+                                    <td colSpan={2}>
+                                      <strong>
+                                        ${formatNumber(
+                                          rebalanceActions.reduce((sum, s) => sum + s.amount, 0)
+                                        )}
+                                      </strong>
+                                    </td>
+                                  </tr>
+                                </tbody>
+                              </Table>
+                            </div>
+                            <Alert variant="info" className="mt-3">
+                              <strong>Note:</strong> The suggestions above show specific trades that will help bring your portfolio closer to the target allocation. Sell trades are listed first, followed by buy trades.
+                            </Alert>
+
+                            <h5 className="mt-4 mb-3">Projected Portfolio After Rebalancing</h5>
+                            <p className="small">
+                              This shows how your portfolio would look after implementing all the suggested sell and buy trades above.
+                            </p>
+                            
+                            <Row>
+                              <Col md={6}>
+                                <h6 className="text-center mb-3">Model Portfolio</h6>
+                                <div className="comparison-chart-container">
+                                  <Pie data={getChartData(modelAllocation, 'Model Allocation')} options={chartOptions} />
+                                </div>
+                              </Col>
+                              <Col md={6}>
+                                <h6 className="text-center mb-3">Projected Portfolio</h6>
+                                <div className="comparison-chart-container">
+                                  <Pie 
+                                    data={getChartData(simulatedAllocation, 'Projected Allocation')} 
+                                    options={chartOptions} 
+                                  />
+                                </div>
+                              </Col>
+                            </Row>
+
+                            <h6 className="mt-4 mb-2">Projected Allocation Comparison</h6>
+                            <div className="table-responsive">
+                              <Table striped bordered hover size="sm" className="comparison-table">
+                                <thead>
+                                  <tr>
+                                    <th>Category</th>
+                                    <th>Model Allocation</th>
+                                    <th>Current Allocation</th>
+                                    <th>Projected Allocation</th>
+                                    <th>Current Difference</th>
+                                    <th>Projected Difference</th>
+                                    <th>Improvement</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {categories.map(category => {
+                                    const modelAlloc = modelAllocation[category.id] || 0;
+                                    const currentAlloc = currentAllocation[category.id] || 0;
+                                    const projectedAlloc = simulatedAllocation[category.id] || 0;
+                                    const currentDiff = deviations[category.id] || 0;
+                                    const projectedDiff = simulatedDeviations[category.id] || 0;
+                                    const improvement = Math.abs(currentDiff) - Math.abs(projectedDiff);
+                                    const rowClass = Math.abs(projectedDiff) < Math.abs(currentDiff) ? 'table-success' : '';
+
+                                    return (
+                                      <tr key={category.id} className={rowClass}>
+                                        <td>{category.name}</td>
+                                        <td>{formatNumber(modelAlloc)}%</td>
+                                        <td>{formatNumber(currentAlloc)}%</td>
+                                        <td>{formatNumber(projectedAlloc)}%</td>
+                                        <td>{currentDiff > 0 ? '+' : ''}{formatNumber(currentDiff)}%</td>
+                                        <td>{projectedDiff > 0 ? '+' : ''}{formatNumber(projectedDiff)}%</td>
+                                        <td className={improvement > 0 ? 'text-success' : (improvement < 0 ? 'text-danger' : '')}>
+                                          {improvement > 0 ? '+' : ''}{formatNumber(improvement)}%
+                                        </td>
+                                      </tr>
+                                    );
+                                  })}
+                                  <tr className={Math.abs(simulatedDeviations['uncategorized'] || 0) < Math.abs(deviations['uncategorized'] || 0) ? 'table-success' : ''}>
+                                    <td>Uncategorized</td>
+                                    <td>{formatNumber(modelAllocation['uncategorized'] || 0)}%</td>
+                                    <td>{formatNumber(currentAllocation['uncategorized'] || 0)}%</td>
+                                    <td>{formatNumber(simulatedAllocation['uncategorized'] || 0)}%</td>
+                                    <td>
+                                      {(deviations['uncategorized'] || 0) > 0 ? '+' : ''}
+                                      {formatNumber(deviations['uncategorized'] || 0)}%
+                                    </td>
+                                    <td>
+                                      {(simulatedDeviations['uncategorized'] || 0) > 0 ? '+' : ''}
+                                      {formatNumber(simulatedDeviations['uncategorized'] || 0)}%
+                                    </td>
+                                    <td className={(Math.abs(deviations['uncategorized'] || 0) - Math.abs(simulatedDeviations['uncategorized'] || 0)) > 0 ? 'text-success' : 'text-danger'}>
+                                      {(Math.abs(deviations['uncategorized'] || 0) - Math.abs(simulatedDeviations['uncategorized'] || 0)) > 0 ? '+' : ''}
+                                      {formatNumber(Math.abs(deviations['uncategorized'] || 0) - Math.abs(simulatedDeviations['uncategorized'] || 0))}%
+                                    </td>
+                                  </tr>
+                                </tbody>
+                              </Table>
+                            </div>
+                          </>
+                        ) : (
+                          <Alert variant="warning">
+                            No rebalancing suggestions could be generated. This may be because:
+                            <ul className="mb-0 mt-2">
+                              <li>Your portfolio is already well-balanced</li>
+                              <li>Stock price information is missing</li>
+                              <li>The deviations are too small to warrant trades</li>
+                            </ul>
                           </Alert>
                         )}
                       </Card.Body>
@@ -1735,34 +2066,6 @@ const PortfolioComparison = ({
                       </tbody>
                     </Table>
                   </div>
-
-                  {rebalanceActions.length > 0 && (
-                    <>
-                      <h5 className="mt-4 mb-3">Rebalancing Actions</h5>
-                      <div className="table-responsive">
-                        <Table striped bordered hover>
-                          <thead>
-                            <tr>
-                              <th>Category</th>
-                              <th>Action</th>
-                              <th>% Difference</th>
-                              <th>Amount ($)</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {rebalanceActions.map((action, index) => (
-                              <tr key={index}>
-                                <td>{action.category}</td>
-                                <td>{action.action}</td>
-                                <td>{action.percent}%</td>
-                                <td>{formatDollarAmount(action.amount)}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </Table>
-                      </div>
-                    </>
-                  )}
                 </>
               )}
             </>
