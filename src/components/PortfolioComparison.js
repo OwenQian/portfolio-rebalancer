@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Card, Table, Row, Col, Form, Button, Alert, Badge, InputGroup } from 'react-bootstrap';
+import { Card, Table, Row, Col, Form, Button, Alert, Badge, InputGroup, Modal } from 'react-bootstrap';
 import { Pie } from 'react-chartjs-2';
 import { Chart as ChartJS, ArcElement, Tooltip, Legend } from 'chart.js';
 import { formatDollarAmount, formatNumber } from '../utils/formatters';
@@ -47,6 +47,12 @@ const PortfolioComparison = ({
   const [buyOnlySuggestions, setBuyOnlySuggestions] = useState([]);
   const [selectedTrades, setSelectedTrades] = useState({});
   const [recalculatedSuggestions, setRecalculatedSuggestions] = useState([]);
+
+  // Add these state variables near the top with other states
+  const [showJsonModal, setShowJsonModal] = useState(false);
+  const [showCsvModal, setShowCsvModal] = useState(false);
+  const [jsonExportData, setJsonExportData] = useState(null);
+  const [csvExportData, setCsvExportData] = useState(null);
 
   // Generate random colors for categories
   const generateColors = (count) => {
@@ -1202,8 +1208,8 @@ const PortfolioComparison = ({
     };
   };
 
-  // Use memoized functions in export functions
-  const exportToJson = () => {
+  // Modify the export functions
+  const prepareJsonExport = () => {
     if (!selectedModelPortfolio) return;
     
     // Get the selected model portfolio object
@@ -1246,7 +1252,14 @@ const PortfolioComparison = ({
       })
     };
     
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    setJsonExportData(data);
+    setShowJsonModal(true);
+  };
+
+  const downloadJson = () => {
+    if (!jsonExportData) return;
+    
+    const blob = new Blob([JSON.stringify(jsonExportData, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -1255,12 +1268,10 @@ const PortfolioComparison = ({
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+    setShowJsonModal(false);
   };
-  
-  // Export rebalancing suggestions to CSV
-  const exportToCsv = () => {
-    if (!selectedModelPortfolio) return;
-    
+
+  const prepareCsvExport = () => {
     const suggestions = memoizedGenerateRebalanceSuggestions();
     if (suggestions.length === 0) {
       alert('No rebalancing suggestions available to export.');
@@ -1296,7 +1307,14 @@ const PortfolioComparison = ({
     ];
     
     const csvContent = csvRows.join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv' });
+    setCsvExportData(csvContent);
+    setShowCsvModal(true);
+  };
+
+  const downloadCsv = () => {
+    if (!csvExportData) return;
+    
+    const blob = new Blob([csvExportData], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -1305,6 +1323,7 @@ const PortfolioComparison = ({
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+    setShowCsvModal(false);
   };
 
   // Handle exporting buy-only suggestions to CSV
@@ -1488,14 +1507,14 @@ const PortfolioComparison = ({
                             variant="outline-primary" 
                             size="sm" 
                             className="me-2"
-                            onClick={exportToJson}
+                            onClick={prepareJsonExport}
                           >
                             Export to JSON
                           </Button>
                           <Button 
                             variant="outline-success" 
                             size="sm"
-                            onClick={exportToCsv}
+                            onClick={prepareCsvExport}
                           >
                             Export to CSV
                           </Button>
@@ -1681,7 +1700,7 @@ const PortfolioComparison = ({
                               <Button 
                                 variant="outline-success" 
                                 size="sm"
-                                onClick={exportToCsv}
+                                onClick={prepareCsvExport}
                               >
                                 Export to CSV
                               </Button>
@@ -2233,6 +2252,58 @@ const PortfolioComparison = ({
           )}
         </Card.Body>
       </Card>
+
+      {/* JSON Export Modal */}
+      <Modal show={showJsonModal} onHide={() => setShowJsonModal(false)} size="lg">
+        <Modal.Header closeButton>
+          <Modal.Title>JSON Export Preview</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          <div style={{ maxHeight: '60vh', overflow: 'auto' }}>
+            <pre style={{ whiteSpace: 'pre-wrap' }}>
+              {jsonExportData ? JSON.stringify(jsonExportData, null, 2) : ''}
+            </pre>
+          </div>
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={() => setShowJsonModal(false)}>
+            Close
+          </Button>
+          <Button variant="primary" onClick={downloadJson}>
+            Download JSON
+          </Button>
+        </Modal.Footer>
+      </Modal>
+
+      {/* CSV Export Modal */}
+      <Modal show={showCsvModal} onHide={() => setShowCsvModal(false)} size="lg">
+        <Modal.Header closeButton>
+          <Modal.Title>CSV Export Preview</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          <div style={{ maxHeight: '60vh', overflow: 'auto' }}>
+            <Table striped bordered hover size="sm">
+              <tbody>
+                {csvExportData?.split('\n').map((row, index) => (
+                  <tr key={index}>
+                    {row.split(',').map((cell, cellIndex) => (
+                      <td key={cellIndex}>{cell.replace(/"/g, '')}</td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </Table>
+          </div>
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={() => setShowCsvModal(false)}>
+            Close
+          </Button>
+          <Button variant="primary" onClick={downloadCsv}>
+            Download CSV
+          </Button>
+        </Modal.Footer>
+      </Modal>
     </div>
   );
 };
