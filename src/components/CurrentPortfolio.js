@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Card, Button, Table, Form, Row, Col, Modal, Badge, Accordion, Spinner, Alert } from 'react-bootstrap';
 import { formatDollarAmount } from '../utils/formatters';
 import PortfolioValueChart from './PortfolioValueChart';
@@ -468,7 +468,7 @@ const CurrentPortfolio = ({
   };
 
   // Update sorted snapshot history whenever portfolio value history changes
-  const updateSortedSnapshotHistory = () => {
+  const updateSortedSnapshotHistory = useCallback(() => {
     // Check if portfolioValueHistory is an array
     if (!portfolioValueHistory || !Array.isArray(portfolioValueHistory)) {
       setSortedSnapshotHistory([]);
@@ -480,7 +480,7 @@ const CurrentPortfolio = ({
       new Date(b.date) - new Date(a.date)
     );
     setSortedSnapshotHistory(sorted);
-  };
+  }, [portfolioValueHistory, setSortedSnapshotHistory]);
 
   // Initialize date input with current date and time when opening modal
   useEffect(() => {
@@ -497,7 +497,7 @@ const CurrentPortfolio = ({
   // Update sorted history whenever the original history changes
   useEffect(() => {
     updateSortedSnapshotHistory();
-  }, [portfolioValueHistory]);
+  }, [portfolioValueHistory, updateSortedSnapshotHistory]);
 
   // Take a snapshot of the current portfolio value
   const handleTakeSnapshot = () => {

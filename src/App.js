@@ -286,7 +286,7 @@ function App() {
     };
     
     saveData();
-  }, [modelPortfolios, accounts, categories, stockCategories, stockPrices, marketstackApiKey, isUsingFileStorage]);
+  }, [modelPortfolios, accounts, categories, stockCategories, stockPrices, marketstackApiKey, isUsingFileStorage, portfolioValueHistory]);
 
   // Function to update stock prices using Marketstack API
   const updateStockPrices = async (manualPrices = null, selectedSymbols = null, snapshotOnly = false, snapshotValue = null) => {
