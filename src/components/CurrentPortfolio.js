@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, Button, Table, Form, Row, Col, Modal, Badge, Accordion, Spinner, Alert } from 'react-bootstrap';
 import { formatDollarAmount } from '../utils/formatters';
 import PortfolioValueChart from './PortfolioValueChart';
@@ -21,8 +21,10 @@ const CurrentPortfolio = ({
 }) => {
   const [showAddAccountModal, setShowAddAccountModal] = useState(false);
   const [showAddPositionModal, setShowAddPositionModal] = useState(false);
-  const [showApiKeyModal, setShowApiKeyModal] = useState(false);
   const [showSnapshotModal, setShowSnapshotModal] = useState(false);
+  const [showSyncPricesModal, setShowSyncPricesModal] = useState(false);
+  const [selectedStocksToSync, setSelectedStocksToSync] = useState({});
+  const [tempApiKey, setTempApiKey] = useState(marketstackApiKey || '');
   const [newAccountName, setNewAccountName] = useState('');
   const [selectedAccount, setSelectedAccount] = useState(null);
   const [newSymbol, setNewSymbol] = useState('');
@@ -33,7 +35,6 @@ const CurrentPortfolio = ({
   const [editingAssets, setEditingAssets] = useState(false);
   const [tempPrices, setTempPrices] = useState({...stockPrices});
   const [tempCategories, setTempCategories] = useState({...stockCategories});
-  const [tempApiKey, setTempApiKey] = useState(marketstackApiKey);
   const [newPrice, setNewPrice] = useState('');
   const [expandedAccounts, setExpandedAccounts] = useState(Array(accounts.length).fill(true).map((_, i) => i.toString()));
   const [sortedSnapshotHistory, setSortedSnapshotHistory] = useState([]);
@@ -42,6 +43,7 @@ const CurrentPortfolio = ({
   const [editSnapshotDate, setEditSnapshotDate] = useState('');
   const [newSnapshotValue, setNewSnapshotValue] = useState('');
   const [newSnapshotDate, setNewSnapshotDate] = useState('');
+  const [isErrorDismissed, setIsErrorDismissed] = useState(false);
 
   const expandAllAccounts = () => {
     const allAccountKeys = accounts.map((_, index) => index.toString());
@@ -114,22 +116,55 @@ const CurrentPortfolio = ({
     setEditingAssets(false);
   };
 
-  const handleConfigureApiKey = () => {
-    setTempApiKey(marketstackApiKey);
-    setShowApiKeyModal(true);
-  };
-
-  const handleSaveApiKey = () => {
-    updateApiKey(tempApiKey);
-    setShowApiKeyModal(false);
-  };
-
   const handleSyncPrices = () => {
-    if (!marketstackApiKey) {
-      handleConfigureApiKey();
-    } else {
-      updateStockPrices();
+    // Initialize selected stocks state with all stocks selected
+    const initialSelectedStocks = {};
+    const symbols = getAllUniqueStockSymbols();
+    symbols.forEach(symbol => {
+      initialSelectedStocks[symbol] = true;
+    });
+    setSelectedStocksToSync(initialSelectedStocks);
+    setTempApiKey(marketstackApiKey || '');
+    setShowSyncPricesModal(true);
+  };
+
+  const handleSyncSelectedPrices = () => {
+    const selectedSymbols = Object.keys(selectedStocksToSync).filter(symbol => selectedStocksToSync[symbol]);
+    if (selectedSymbols.length === 0) {
+      alert('Please select at least one stock to update.');
+      return;
     }
+    
+    // Save API key if changed
+    if (tempApiKey !== marketstackApiKey) {
+      updateApiKey(tempApiKey);
+    }
+    
+    updateStockPrices(null, selectedSymbols);
+    setShowSyncPricesModal(false);
+  };
+
+  const handleSelectAllStocks = () => {
+    const allSelected = {};
+    getAllUniqueStockSymbols().forEach(symbol => {
+      allSelected[symbol] = true;
+    });
+    setSelectedStocksToSync(allSelected);
+  };
+
+  const handleDeselectAllStocks = () => {
+    const allDeselected = {};
+    getAllUniqueStockSymbols().forEach(symbol => {
+      allDeselected[symbol] = false;
+    });
+    setSelectedStocksToSync(allDeselected);
+  };
+
+  const handleStockSelectionChange = (symbol, isSelected) => {
+    setSelectedStocksToSync(prev => ({
+      ...prev,
+      [symbol]: isSelected
+    }));
   };
 
   const handleAddAccount = () => {
@@ -468,7 +503,7 @@ const CurrentPortfolio = ({
   };
 
   // Update sorted snapshot history whenever portfolio value history changes
-  const updateSortedSnapshotHistory = useCallback(() => {
+  const updateSortedSnapshotHistory = () => {
     // Check if portfolioValueHistory is an array
     if (!portfolioValueHistory || !Array.isArray(portfolioValueHistory)) {
       setSortedSnapshotHistory([]);
@@ -480,7 +515,7 @@ const CurrentPortfolio = ({
       new Date(b.date) - new Date(a.date)
     );
     setSortedSnapshotHistory(sorted);
-  }, [portfolioValueHistory, setSortedSnapshotHistory]);
+  };
 
   // Initialize date input with current date and time when opening modal
   useEffect(() => {
@@ -497,7 +532,7 @@ const CurrentPortfolio = ({
   // Update sorted history whenever the original history changes
   useEffect(() => {
     updateSortedSnapshotHistory();
-  }, [portfolioValueHistory, updateSortedSnapshotHistory]);
+  }, [portfolioValueHistory]);
 
   // Take a snapshot of the current portfolio value
   const handleTakeSnapshot = () => {
@@ -518,6 +553,13 @@ const CurrentPortfolio = ({
     // Close the modal after taking a snapshot
     setShowSnapshotModal(false);
   };
+
+  // Reset error dismissed state when apiError changes
+  useEffect(() => {
+    if (apiError) {
+      setIsErrorDismissed(false);
+    }
+  }, [apiError]);
 
   return (
     <div>
@@ -553,11 +595,8 @@ const CurrentPortfolio = ({
                   <Button variant="success" onClick={handleSyncPrices} className="me-2">
                     Sync Prices
                   </Button>
-                  <Button variant="primary" onClick={() => setShowSnapshotModal(true)} className="me-2">
+                  <Button variant="primary" onClick={() => setShowSnapshotModal(true)}>
                     Manage Snapshots
-                  </Button>
-                  <Button variant="outline-secondary" onClick={handleConfigureApiKey}>
-                    <i className="bi bi-gear-fill"></i> API Settings
                   </Button>
                 </>
               )}
@@ -566,8 +605,8 @@ const CurrentPortfolio = ({
         </Col>
       </Row>
 
-      {apiError && (
-        <Alert variant="danger" className="mb-4">
+      {apiError && !isErrorDismissed && (
+        <Alert variant="danger" className="mb-4" dismissible onClose={() => setIsErrorDismissed(true)}>
           <Alert.Heading>Error Syncing Prices</Alert.Heading>
           {apiError.includes('Failed to update prices for') ? (
             <>
@@ -963,37 +1002,6 @@ const CurrentPortfolio = ({
         </Modal.Footer>
       </Modal>
 
-      {/* API Key Configuration Modal */}
-      <Modal show={showApiKeyModal} onHide={() => setShowApiKeyModal(false)}>
-        <Modal.Header closeButton>
-          <Modal.Title>Marketstack API Configuration</Modal.Title>
-        </Modal.Header>
-        <Modal.Body>
-          <Form>
-            <Form.Group className="mb-3">
-              <Form.Label>Marketstack API Key</Form.Label>
-              <Form.Control
-                type="text"
-                placeholder="Enter your Marketstack API key"
-                value={tempApiKey}
-                onChange={(e) => setTempApiKey(e.target.value)}
-              />
-              <Form.Text className="text-muted">
-                Your API key will be stored locally in your browser. You can get a free API key by signing up at <a href="https://marketstack.com" target="_blank" rel="noopener noreferrer">marketstack.com</a>
-              </Form.Text>
-            </Form.Group>
-          </Form>
-        </Modal.Body>
-        <Modal.Footer>
-          <Button variant="secondary" onClick={() => setShowApiKeyModal(false)}>
-            Cancel
-          </Button>
-          <Button variant="primary" onClick={handleSaveApiKey}>
-            Save API Key
-          </Button>
-        </Modal.Footer>
-      </Modal>
-
       {/* Snapshot Management Modal */}
       <Modal show={showSnapshotModal} onHide={() => setShowSnapshotModal(false)} size="lg">
         <Modal.Header closeButton>
@@ -1147,6 +1155,91 @@ const CurrentPortfolio = ({
         <Modal.Footer>
           <Button variant="primary" onClick={() => setShowSnapshotModal(false)}>
             Close
+          </Button>
+        </Modal.Footer>
+      </Modal>
+
+      {/* Sync Prices Modal */}
+      <Modal 
+        show={showSyncPricesModal} 
+        onHide={() => setShowSyncPricesModal(false)}
+        size="lg"
+      >
+        <Modal.Header closeButton>
+          <Modal.Title>Select Stocks to Update</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          {/* API Key Configuration */}
+          <Card className="mb-3">
+            <Card.Header>
+              <h6 className="mb-0">API Settings</h6>
+            </Card.Header>
+            <Card.Body>
+              <Form.Group className="mb-0">
+                <Form.Label>Marketstack API Key</Form.Label>
+                <Form.Control
+                  type="text"
+                  placeholder="Enter your Marketstack API key"
+                  value={tempApiKey}
+                  onChange={(e) => setTempApiKey(e.target.value)}
+                />
+                <Form.Text className="text-muted">
+                  Your API key will be stored locally in your browser. You can get a free API key by signing up at <a href="https://marketstack.com" target="_blank" rel="noopener noreferrer">marketstack.com</a>
+                </Form.Text>
+              </Form.Group>
+            </Card.Body>
+          </Card>
+
+          <div className="d-flex justify-content-end mb-3">
+            <Button 
+              variant="outline-primary" 
+              size="sm" 
+              className="me-2"
+              onClick={handleSelectAllStocks}
+            >
+              Select All
+            </Button>
+            <Button 
+              variant="outline-secondary" 
+              size="sm"
+              onClick={handleDeselectAllStocks}
+            >
+              Deselect All
+            </Button>
+          </div>
+          <div className="table-responsive">
+            <Table striped bordered hover>
+              <thead>
+                <tr>
+                  <th>Select</th>
+                  <th>Symbol</th>
+                  <th>Current Price</th>
+                </tr>
+              </thead>
+              <tbody>
+                {getAllUniqueStockSymbols().map((symbol) => (
+                  <tr key={symbol}>
+                    <td>
+                      <Form.Check
+                        type="checkbox"
+                        checked={selectedStocksToSync[symbol] || false}
+                        onChange={(e) => handleStockSelectionChange(symbol, e.target.checked)}
+                      />
+                    </td>
+                    <td>{symbol}</td>
+                    <td>{formatDollarAmount(stockPrices[symbol] || '0.00')}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </Table>
+          </div>
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={() => setShowSyncPricesModal(false)}>
+            Cancel
+          </Button>
+          <Button variant="primary" onClick={handleSyncSelectedPrices}>
+            Sync Selected Prices
           </Button>
         </Modal.Footer>
       </Modal>

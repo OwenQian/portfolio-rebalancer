@@ -23,6 +23,7 @@ const PortfolioComparison = ({
   const [rebalanceActions, setRebalanceActions] = useState([]);
   const [totalPortfolioValue, setTotalPortfolioValue] = useState(0);
   const [specificRebalancingSuggestions, setSpecificRebalancingSuggestions] = useState([]);
+  const [showSpecificSuggestions] = useState(false);
   
   // What-if analysis states
   const [showWhatIfAnalysis, setShowWhatIfAnalysis] = useState(false);
