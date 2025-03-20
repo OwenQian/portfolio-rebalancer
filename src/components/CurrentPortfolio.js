@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Card, Button, Table, Form, Row, Col, Modal, Badge, Accordion, Spinner, Alert } from 'react-bootstrap';
 import { formatDollarAmount } from '../utils/formatters';
+import PortfolioValueChart from './PortfolioValueChart';
 
 const CurrentPortfolio = ({ 
   accounts, 
@@ -14,12 +15,14 @@ const CurrentPortfolio = ({
   updateApiKey,
   isLoadingPrices,
   apiError,
-  modelPortfolios
+  modelPortfolios,
+  portfolioValueHistory,
+  setPortfolioValueHistory
 }) => {
   const [showAddAccountModal, setShowAddAccountModal] = useState(false);
   const [showAddPositionModal, setShowAddPositionModal] = useState(false);
   const [showApiKeyModal, setShowApiKeyModal] = useState(false);
-  const [showSyncModal, setShowSyncModal] = useState(false);
+  const [showSnapshotModal, setShowSnapshotModal] = useState(false);
   const [newAccountName, setNewAccountName] = useState('');
   const [selectedAccount, setSelectedAccount] = useState(null);
   const [newSymbol, setNewSymbol] = useState('');
@@ -33,7 +36,12 @@ const CurrentPortfolio = ({
   const [tempApiKey, setTempApiKey] = useState(marketstackApiKey);
   const [newPrice, setNewPrice] = useState('');
   const [expandedAccounts, setExpandedAccounts] = useState(Array(accounts.length).fill(true).map((_, i) => i.toString()));
-  const [symbolsToSync, setSymbolsToSync] = useState({});
+  const [sortedSnapshotHistory, setSortedSnapshotHistory] = useState([]);
+  const [editingSnapshotIndex, setEditingSnapshotIndex] = useState(null);
+  const [editSnapshotValue, setEditSnapshotValue] = useState('');
+  const [editSnapshotDate, setEditSnapshotDate] = useState('');
+  const [newSnapshotValue, setNewSnapshotValue] = useState('');
+  const [newSnapshotDate, setNewSnapshotDate] = useState('');
 
   const expandAllAccounts = () => {
     const allAccountKeys = accounts.map((_, index) => index.toString());
@@ -69,16 +77,6 @@ const CurrentPortfolio = ({
       portfolio.stocks.forEach(stock => {
         symbols.add(stock.symbol);
       });
-    });
-    
-    // Add symbols from stockCategories
-    Object.keys(stockCategories).forEach(symbol => {
-      symbols.add(symbol);
-    });
-    
-    // Add symbols from stockPrices
-    Object.keys(stockPrices).forEach(symbol => {
-      symbols.add(symbol);
     });
     
     return Array.from(symbols).sort();
@@ -130,46 +128,8 @@ const CurrentPortfolio = ({
     if (!marketstackApiKey) {
       handleConfigureApiKey();
     } else {
-      // Initialize symbols to sync
-      const allSymbols = getAllUniqueStockSymbols();
-      const initialSyncState = allSymbols.reduce((acc, symbol) => {
-        acc[symbol] = true;
-        return acc;
-      }, {});
-      setSymbolsToSync(initialSyncState);
-      setShowSyncModal(true);
+      updateStockPrices();
     }
-  };
-
-  const handleConfirmSync = () => {
-    const selectedSymbols = Object.keys(symbolsToSync).filter(symbol => symbolsToSync[symbol]);
-    updateStockPrices(undefined, selectedSymbols);
-    setShowSyncModal(false);
-  };
-
-  const handleSelectAllSymbols = () => {
-    const allSymbols = getAllUniqueStockSymbols();
-    const selectAll = allSymbols.reduce((acc, symbol) => {
-      acc[symbol] = true;
-      return acc;
-    }, {});
-    setSymbolsToSync(selectAll);
-  };
-
-  const handleDeselectAllSymbols = () => {
-    const allSymbols = getAllUniqueStockSymbols();
-    const deselectAll = allSymbols.reduce((acc, symbol) => {
-      acc[symbol] = false;
-      return acc;
-    }, {});
-    setSymbolsToSync(deselectAll);
-  };
-
-  const toggleSymbolSelection = (symbol) => {
-    setSymbolsToSync(prev => ({
-      ...prev,
-      [symbol]: !prev[symbol]
-    }));
   };
 
   const handleAddAccount = () => {
@@ -375,6 +335,187 @@ const CurrentPortfolio = ({
     setNewCategory('');
   };
 
+  // Handle editing a snapshot
+  const handleEditSnapshot = (index) => {
+    const snapshot = sortedSnapshotHistory[index];
+    
+    // Convert date to the format expected by datetime-local input
+    const dateObj = new Date(snapshot.date);
+    const formattedDate = new Date(dateObj.getTime() - dateObj.getTimezoneOffset() * 60000)
+      .toISOString()
+      .slice(0, 16);
+    
+    setEditSnapshotValue(snapshot.value);
+    setEditSnapshotDate(formattedDate);
+    setEditingSnapshotIndex(index);
+  };
+
+  // Handle saving edited snapshot
+  const handleSaveEditedSnapshot = () => {
+    if (!editSnapshotValue || isNaN(parseFloat(editSnapshotValue)) || parseFloat(editSnapshotValue) <= 0) {
+      alert('Please enter a valid snapshot value');
+      return;
+    }
+    
+    if (!editSnapshotDate) {
+      alert('Please select a valid date');
+      return;
+    }
+
+    // Ensure portfolioValueHistory is an array
+    if (!portfolioValueHistory || !Array.isArray(portfolioValueHistory)) {
+      return;
+    }
+
+    const value = parseFloat(editSnapshotValue).toFixed(2);
+    const date = new Date(editSnapshotDate).toISOString();
+    
+    // Get the record to edit from sorted history
+    const recordToEdit = sortedSnapshotHistory[editingSnapshotIndex];
+    
+    // Find its actual index in the portfolio value history
+    const actualIndex = portfolioValueHistory.findIndex(
+      record => record.date === recordToEdit.date && 
+                record.value === recordToEdit.value && 
+                record.type === recordToEdit.type
+    );
+    
+    if (actualIndex !== -1) {
+      // Create an updated copy of the history
+      const updatedHistory = [...portfolioValueHistory];
+      // Update the record with new values but keep the same type
+      updatedHistory[actualIndex] = {
+        ...updatedHistory[actualIndex],
+        date,
+        value
+      };
+      
+      // Update the state which will trigger useEffect to update sortedSnapshotHistory
+      setPortfolioValueHistory(updatedHistory);
+      
+      // Exit edit mode
+      setEditingSnapshotIndex(null);
+    }
+  };
+
+  // Handle canceling edit
+  const handleCancelEdit = () => {
+    setEditingSnapshotIndex(null);
+  };
+
+  // Handle adding a new snapshot manually
+  const handleAddManualSnapshot = (e) => {
+    e.preventDefault();
+    
+    if (!newSnapshotValue || isNaN(parseFloat(newSnapshotValue)) || parseFloat(newSnapshotValue) <= 0) {
+      alert('Please enter a valid snapshot value');
+      return;
+    }
+    
+    if (!newSnapshotDate) {
+      alert('Please select a valid date');
+      return;
+    }
+
+    const value = parseFloat(newSnapshotValue).toFixed(2);
+    const date = new Date(newSnapshotDate).toISOString();
+    
+    // Ensure portfolioValueHistory is an array before updating
+    const currentHistory = Array.isArray(portfolioValueHistory) ? portfolioValueHistory : [];
+    
+    // Create a new snapshot record and add to history
+    setPortfolioValueHistory([
+      ...currentHistory,
+      { date, value, type: 'snapshot' }
+    ]);
+    
+    // Reset form fields
+    setNewSnapshotValue('');
+    setNewSnapshotDate('');
+    
+    alert('Snapshot added successfully!');
+  };
+
+  const handleDeleteSnapshot = (index) => {
+    if (window.confirm('Are you sure you want to delete this snapshot?')) {
+      // Ensure portfolioValueHistory is an array
+      if (!portfolioValueHistory || !Array.isArray(portfolioValueHistory)) {
+        return;
+      }
+      
+      // Get the record to delete from sorted history
+      const recordToDelete = sortedSnapshotHistory[index];
+      
+      // Find its actual index in the portfolio value history
+      const actualIndex = portfolioValueHistory.findIndex(
+        record => record.date === recordToDelete.date && 
+                 record.value === recordToDelete.value && 
+                 record.type === recordToDelete.type
+      );
+      
+      if (actualIndex !== -1) {
+        const updatedHistory = [...portfolioValueHistory];
+        updatedHistory.splice(actualIndex, 1);
+        setPortfolioValueHistory(updatedHistory);
+      }
+    }
+  };
+
+  // Format date for display in snapshot list
+  const formatDateAndTime = (dateString) => {
+    const date = new Date(dateString);
+    return date.toLocaleString();
+  };
+
+  // Update sorted snapshot history whenever portfolio value history changes
+  const updateSortedSnapshotHistory = () => {
+    // Check if portfolioValueHistory is an array
+    if (!portfolioValueHistory || !Array.isArray(portfolioValueHistory)) {
+      setSortedSnapshotHistory([]);
+      return;
+    }
+    
+    // Create a sorted copy of the history (newest first)
+    const sorted = [...portfolioValueHistory].sort((a, b) => 
+      new Date(b.date) - new Date(a.date)
+    );
+    setSortedSnapshotHistory(sorted);
+  };
+
+  // Initialize date input with current date and time when opening modal
+  useEffect(() => {
+    if (showSnapshotModal) {
+      const now = new Date();
+      // Format date in the format expected by datetime-local input (YYYY-MM-DDThh:mm)
+      const formattedDate = new Date(now.getTime() - now.getTimezoneOffset() * 60000)
+        .toISOString()
+        .slice(0, 16);
+      setNewSnapshotDate(formattedDate);
+    }
+  }, [showSnapshotModal]);
+
+  // Update sorted history whenever the original history changes
+  useEffect(() => {
+    updateSortedSnapshotHistory();
+  }, [portfolioValueHistory]);
+
+  // Take a snapshot of the current portfolio value
+  const handleTakeSnapshot = () => {
+    // Calculate the current portfolio total
+    const totalValue = calculatePortfolioTotal();
+    
+    // Ensure portfolioValueHistory is an array before updating
+    const currentHistory = Array.isArray(portfolioValueHistory) ? portfolioValueHistory : [];
+    
+    // Record the snapshot
+    setPortfolioValueHistory([
+      ...currentHistory,
+      { date: new Date().toISOString(), value: totalValue, type: 'snapshot' }
+    ]);
+    
+    alert(`Portfolio snapshot recorded: ${formatDollarAmount(totalValue)}`);
+  };
+
   return (
     <div>
       <Row className="mb-4">
@@ -409,6 +550,12 @@ const CurrentPortfolio = ({
                   <Button variant="success" onClick={handleSyncPrices} className="me-2">
                     Sync Prices
                   </Button>
+                  <Button variant="outline-primary" onClick={handleTakeSnapshot} className="me-2">
+                    Take Snapshot
+                  </Button>
+                  <Button variant="primary" onClick={() => setShowSnapshotModal(true)} className="me-2">
+                    Manage Snapshots
+                  </Button>
                   <Button variant="outline-secondary" onClick={handleConfigureApiKey}>
                     <i className="bi bi-gear-fill"></i> API Settings
                   </Button>
@@ -425,6 +572,9 @@ const CurrentPortfolio = ({
           <p>{apiError}</p>
         </Alert>
       )}
+
+      {/* Portfolio Value History Chart */}
+      <PortfolioValueChart portfolioValueHistory={portfolioValueHistory} />
 
       {editingAssets && (
         <Card className="mb-4">
@@ -686,97 +836,6 @@ const CurrentPortfolio = ({
         </>
       )}
 
-      {/* Price Sync Selection Modal */}
-      <Modal show={showSyncModal} onHide={() => setShowSyncModal(false)} size="lg">
-        <Modal.Header closeButton>
-          <Modal.Title>Select Positions to Update Prices</Modal.Title>
-        </Modal.Header>
-        <Modal.Body>
-          <div className="d-flex justify-content-end mb-3">
-            <Button 
-              variant="outline-primary" 
-              size="sm" 
-              className="me-2"
-              onClick={handleSelectAllSymbols}
-            >
-              Select All
-            </Button>
-            <Button 
-              variant="outline-secondary" 
-              size="sm"
-              onClick={handleDeselectAllSymbols}
-            >
-              Deselect All
-            </Button>
-          </div>
-          <div className="table-responsive">
-            <Table striped bordered hover>
-              <thead>
-                <tr>
-                  <th>Select</th>
-                  <th>Symbol</th>
-                  <th>Current Price</th>
-                  <th>Category</th>
-                  <th>Source</th>
-                </tr>
-              </thead>
-              <tbody>
-                {getAllUniqueStockSymbols().map((symbol) => {
-                  // Determine source of the symbol
-                  const inAccounts = accounts.some(account => 
-                    account.positions.some(position => position.symbol === symbol)
-                  );
-                  const inModelPortfolios = modelPortfolios?.some(portfolio => 
-                    portfolio.stocks.some(stock => stock.symbol === symbol)
-                  );
-                  
-                  return (
-                    <tr key={symbol}>
-                      <td>
-                        <Form.Check
-                          type="checkbox"
-                          checked={symbolsToSync[symbol] || false}
-                          onChange={() => toggleSymbolSelection(symbol)}
-                          id={`sync-check-${symbol}`}
-                        />
-                      </td>
-                      <td>{symbol}</td>
-                      <td>{formatDollarAmount(stockPrices[symbol] || '0.00')}</td>
-                      <td>
-                        {stockCategories[symbol] ? (
-                          <Badge bg="info">
-                            {categories.find(cat => cat.id === stockCategories[symbol])?.name || 'Unknown'}
-                          </Badge>
-                        ) : (
-                          <Badge bg="secondary">Uncategorized</Badge>
-                        )}
-                      </td>
-                      <td>
-                        {inAccounts && <Badge bg="success" className="me-1">Account</Badge>}
-                        {inModelPortfolios && <Badge bg="primary" className="me-1">Model</Badge>}
-                        {!inAccounts && !inModelPortfolios && <Badge bg="secondary">Category Only</Badge>}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </Table>
-          </div>
-        </Modal.Body>
-        <Modal.Footer>
-          <Button variant="secondary" onClick={() => setShowSyncModal(false)}>
-            Cancel
-          </Button>
-          <Button 
-            variant="primary" 
-            onClick={handleConfirmSync}
-            disabled={!Object.values(symbolsToSync).some(selected => selected)}
-          >
-            Sync Selected Prices
-          </Button>
-        </Modal.Footer>
-      </Modal>
-
       {/* Add Account Modal */}
       <Modal show={showAddAccountModal} onHide={() => setShowAddAccountModal(false)}>
         <Modal.Header closeButton>
@@ -920,6 +979,147 @@ const CurrentPortfolio = ({
           </Button>
           <Button variant="primary" onClick={handleSaveApiKey}>
             Save API Key
+          </Button>
+        </Modal.Footer>
+      </Modal>
+
+      {/* Snapshot Management Modal */}
+      <Modal show={showSnapshotModal} onHide={() => setShowSnapshotModal(false)} size="lg">
+        <Modal.Header closeButton>
+          <Modal.Title>Manage Portfolio Snapshots</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          {/* Add New Snapshot Form */}
+          <Form onSubmit={handleAddManualSnapshot} className="mb-4 p-3 border rounded">
+            <h5>Add New Snapshot</h5>
+            <Row>
+              <Col md={4}>
+                <Form.Group>
+                  <Form.Label>Value ($)</Form.Label>
+                  <Form.Control 
+                    type="number" 
+                    step="0.01" 
+                    min="0" 
+                    value={newSnapshotValue} 
+                    onChange={(e) => setNewSnapshotValue(e.target.value)}
+                    placeholder="Enter value"
+                    required
+                  />
+                </Form.Group>
+              </Col>
+              <Col md={5}>
+                <Form.Group>
+                  <Form.Label>Date & Time</Form.Label>
+                  <Form.Control 
+                    type="datetime-local" 
+                    value={newSnapshotDate} 
+                    onChange={(e) => setNewSnapshotDate(e.target.value)}
+                    required
+                  />
+                </Form.Group>
+              </Col>
+              <Col md={3} className="d-flex align-items-end">
+                <Button type="submit" variant="primary" className="w-100">
+                  Add Snapshot
+                </Button>
+              </Col>
+            </Row>
+          </Form>
+
+          {/* Snapshots List */}
+          <h5 className="mb-3">Snapshot History</h5>
+          
+          <div className="table-responsive">
+            <Table striped bordered hover>
+              <thead>
+                <tr>
+                  <th>Date & Time</th>
+                  <th>Value</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sortedSnapshotHistory.map((record, index) => (
+                  <tr key={index}>
+                    {editingSnapshotIndex === index ? (
+                      // Edit mode
+                      <>
+                        <td>
+                          <Form.Control 
+                            type="datetime-local" 
+                            value={editSnapshotDate} 
+                            onChange={(e) => setEditSnapshotDate(e.target.value)}
+                            required
+                            size="sm"
+                          />
+                        </td>
+                        <td>
+                          <Form.Control 
+                            type="number" 
+                            step="0.01" 
+                            min="0" 
+                            value={editSnapshotValue} 
+                            onChange={(e) => setEditSnapshotValue(e.target.value)}
+                            required
+                            size="sm"
+                          />
+                        </td>
+                        <td>
+                          <Button
+                            variant="success"
+                            size="sm"
+                            onClick={handleSaveEditedSnapshot}
+                            className="me-1"
+                          >
+                            Save
+                          </Button>
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={handleCancelEdit}
+                          >
+                            Cancel
+                          </Button>
+                        </td>
+                      </>
+                    ) : (
+                      // View mode
+                      <>
+                        <td>{formatDateAndTime(record.date)}</td>
+                        <td>{formatDollarAmount(record.value)}</td>
+                        <td>
+                          <Button
+                            variant="outline-primary"
+                            size="sm"
+                            onClick={() => handleEditSnapshot(index)}
+                            className="me-1"
+                          >
+                            Edit
+                          </Button>
+                          <Button
+                            variant="outline-danger"
+                            size="sm"
+                            onClick={() => handleDeleteSnapshot(index)}
+                          >
+                            Delete
+                          </Button>
+                        </td>
+                      </>
+                    )}
+                  </tr>
+                ))}
+                {sortedSnapshotHistory.length === 0 && (
+                  <tr>
+                    <td colSpan="3" className="text-center">No snapshots available</td>
+                  </tr>
+                )}
+              </tbody>
+            </Table>
+          </div>
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={() => setShowSnapshotModal(false)}>
+            Close
           </Button>
         </Modal.Footer>
       </Modal>

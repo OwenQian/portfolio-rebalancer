@@ -69,6 +69,12 @@ function App() {
   const [isLoadingPrices, setIsLoadingPrices] = useState(false);
   const [apiError, setApiError] = useState(null);
   
+  // State for portfolio value history
+  const [portfolioValueHistory, setPortfolioValueHistory] = useState(() => {
+    const savedHistory = localStorage.getItem('portfolioValueHistory');
+    return savedHistory ? JSON.parse(savedHistory) : [];
+  });
+  
   // State for file backup modal
   const [showBackupModal, setShowBackupModal] = useState(false);
   const [showRestoreModal, setShowRestoreModal] = useState(false);
@@ -91,7 +97,8 @@ function App() {
     setStockCategories(data.stockCategories || {});
     setStockPrices(data.stockPrices || {});
     setMarketstackApiKey(data.marketstackApiKey || '');
-  }, [setModelPortfolios, setAccounts, setCategories, setStockCategories, setStockPrices, setMarketstackApiKey]);
+    setPortfolioValueHistory(data.portfolioValueHistory || []);
+  }, [setModelPortfolios, setAccounts, setCategories, setStockCategories, setStockPrices, setMarketstackApiKey, setPortfolioValueHistory]);
   
   // Function to handle restore from file - wrapped in useCallback
   const handleRestoreFromFile = useCallback(async () => {
@@ -191,6 +198,10 @@ function App() {
   useEffect(() => {
     localStorage.setItem('marketstackApiKey', marketstackApiKey);
   }, [marketstackApiKey]);
+
+  useEffect(() => {
+    localStorage.setItem('portfolioValueHistory', JSON.stringify(portfolioValueHistory));
+  }, [portfolioValueHistory]);
   
   // Save data to file when any state changes - only if file system is available
   useEffect(() => {
@@ -214,7 +225,8 @@ function App() {
             categories,
             stockCategories,
             stockPrices,
-            marketstackApiKey
+            marketstackApiKey,
+            portfolioValueHistory
           };
           
           await saveDataToFile('portfolioData', portfolioData);
@@ -230,12 +242,23 @@ function App() {
   }, [modelPortfolios, accounts, categories, stockCategories, stockPrices, marketstackApiKey, isUsingFileStorage]);
 
   // Function to update stock prices using Marketstack API
-  const updateStockPrices = async (manualPrices = null, selectedSymbols = null) => {
+  const updateStockPrices = async (manualPrices = null, selectedSymbols = null, snapshotOnly = false, snapshotValue = null) => {
     try {
+      // If it's just a manual snapshot without syncing prices
+      if (snapshotOnly && snapshotValue) {
+        recordPortfolioSnapshot(snapshotValue, 'snapshot');
+        return snapshotValue;
+      }
+      
       // If manual prices are provided, use them
       if (manualPrices) {
         setStockPrices(manualPrices);
-        return;
+        
+        // Record portfolio value after manual price update
+        const totalValue = calculateTotalPortfolioValue(accounts, manualPrices);
+        recordPortfolioSnapshot(totalValue, 'manual');
+        
+        return totalValue;
       }
 
       // Get all unique stock symbols from accounts and model portfolios
@@ -265,7 +288,7 @@ function App() {
       
       if (symbolsArray.length === 0) {
         alert('No symbols selected for price update.');
-        return;
+        return null;
       }
 
       // Check if API key is provided
@@ -273,7 +296,7 @@ function App() {
         const apiKey = prompt("Please enter your Marketstack API key to fetch real-time stock prices:");
         if (!apiKey) {
           alert('API key is required to fetch stock prices.');
-          return;
+          return null;
         }
         setMarketstackApiKey(apiKey);
       }
@@ -329,6 +352,10 @@ function App() {
       setStockPrices(updatedPrices);
       setIsLoadingPrices(false);
 
+      // Record portfolio value after price update
+      const totalValue = calculateTotalPortfolioValue(accounts, updatedPrices);
+      recordPortfolioSnapshot(totalValue, 'sync');
+
       if (failedSymbols.length > 0) {
         setApiError(`Failed to update prices for ${failedSymbols.length} symbols.`);
         console.error('Failed symbols:', failedSymbols);
@@ -336,11 +363,14 @@ function App() {
       } else {
         alert(`Successfully updated prices for ${successCount} symbols!`);
       }
+      
+      return totalValue;
     } catch (error) {
       console.error('Error updating stock prices:', error);
       setIsLoadingPrices(false);
       setApiError(error.message);
       alert(`Failed to update stock prices: ${error.message}`);
+      return null;
     }
   };
 
@@ -361,6 +391,7 @@ function App() {
         stockCategories,
         stockPrices,
         marketstackApiKey,
+        portfolioValueHistory,
         backupDate: new Date().toISOString()
       };
       
@@ -458,7 +489,7 @@ function App() {
   // Validate imported data structure
   const validateImportedData = (data) => {
     // At a minimum, we should have at least one of these key properties
-    const requiredKeys = ['modelPortfolios', 'accounts', 'categories', 'stockCategories'];
+    const requiredKeys = ['modelPortfolios', 'accounts', 'categories', 'stockCategories', 'portfolioValueHistory'];
     const hasAtLeastOneKey = requiredKeys.some(key => key in data);
     
     if (!hasAtLeastOneKey) {
@@ -480,6 +511,11 @@ function App() {
     
     // For stock categories, we expect an object
     if (data.stockCategories && typeof data.stockCategories !== 'object') {
+      return false;
+    }
+    
+    // For portfolioValueHistory, we expect an array
+    if (data.portfolioValueHistory && !Array.isArray(data.portfolioValueHistory)) {
       return false;
     }
     
@@ -604,7 +640,8 @@ function App() {
           accounts,
           categories,
           stockCategories,
-          stockPrices
+          stockPrices,
+          portfolioValueHistory
         };
       case 'modelPortfolios':
         return modelPortfolios;
@@ -612,6 +649,8 @@ function App() {
         return accounts;
       case 'categories':
         return categories;
+      case 'snapshots':
+        return portfolioValueHistory;
       default:
         return {};
     }
@@ -635,12 +674,15 @@ function App() {
       } else {
         // For CSV, handle different data types appropriately
         if (exportDataType === 'all') {
-          // For 'all', create a consolidated CSV or provide separate CSVs
-          const csvData = [];
-          if (exportDataType === 'modelPortfolios' || exportDataType === 'all') {
+          // For 'all', create a consolidated CSV with separate sections
+          let csvSections = [];
+          
+          // Add model portfolios section if data exists
+          if (modelPortfolios && modelPortfolios.length > 0) {
+            const modelPortfolioCSV = [];
             modelPortfolios.forEach(portfolio => {
               portfolio.stocks.forEach(stock => {
-                csvData.push({
+                modelPortfolioCSV.push({
                   type: 'Model Portfolio',
                   portfolioName: portfolio.name,
                   symbol: stock.symbol,
@@ -649,12 +691,18 @@ function App() {
                 });
               });
             });
+            
+            if (modelPortfolioCSV.length > 0) {
+              csvSections.push('MODEL PORTFOLIOS\n' + convertToCSV(modelPortfolioCSV));
+            }
           }
           
-          if (exportDataType === 'accounts' || exportDataType === 'all') {
+          // Add accounts section if data exists
+          if (accounts && accounts.length > 0) {
+            const accountsCSV = [];
             accounts.forEach(account => {
               account.positions.forEach(position => {
-                csvData.push({
+                accountsCSV.push({
                   type: 'Account',
                   accountName: account.name,
                   symbol: position.symbol,
@@ -664,9 +712,40 @@ function App() {
                 });
               });
             });
+            
+            if (accountsCSV.length > 0) {
+              csvSections.push('ACCOUNTS AND POSITIONS\n' + convertToCSV(accountsCSV));
+            }
           }
           
-          exportContent = convertToCSV(csvData);
+          // Add snapshots section if data exists
+          if (portfolioValueHistory && portfolioValueHistory.length > 0) {
+            const snapshotsCSV = [];
+            portfolioValueHistory.forEach(snapshot => {
+              snapshotsCSV.push({
+                date: new Date(snapshot.date).toLocaleString(),
+                value: parseFloat(snapshot.value).toFixed(2),
+                type: snapshot.type
+              });
+            });
+            
+            if (snapshotsCSV.length > 0) {
+              csvSections.push('PORTFOLIO SNAPSHOTS\n' + convertToCSV(snapshotsCSV));
+            }
+          }
+          
+          exportContent = csvSections.join('\n\n');
+        } else if (exportDataType === 'snapshots') {
+          // Handle snapshots format conversion separately
+          const snapshotsCSV = [];
+          portfolioValueHistory.forEach(snapshot => {
+            snapshotsCSV.push({
+              date: new Date(snapshot.date).toLocaleString(),
+              value: parseFloat(snapshot.value).toFixed(2),
+              type: snapshot.type
+            });
+          });
+          exportContent = convertToCSV(snapshotsCSV);
         } else if (Array.isArray(data)) {
           exportContent = convertToCSV(data);
         } else {
@@ -759,6 +838,30 @@ function App() {
     }
   };
 
+  // Function to calculate total portfolio value based on accounts and prices
+  const calculateTotalPortfolioValue = (accountsList, priceData) => {
+    return accountsList.reduce((total, account) => {
+      const accountTotal = account.positions.reduce((accTotal, position) => {
+        const price = priceData[position.symbol] || 0;
+        return accTotal + (price * position.shares);
+      }, 0);
+      return total + accountTotal;
+    }, 0).toFixed(2);
+  };
+
+  // Function to record a snapshot of the current portfolio value
+  const recordPortfolioSnapshot = (value, type = 'snapshot') => {
+    setPortfolioValueHistory(prev => {
+      // Ensure prev is an array
+      const prevHistory = Array.isArray(prev) ? prev : [];
+      return [
+        ...prevHistory,
+        { date: new Date().toISOString(), value, type }
+      ];
+    });
+    return value;
+  };
+
   return (
     <div className="App">
       <Header />
@@ -822,6 +925,8 @@ function App() {
                   isLoadingPrices={isLoadingPrices}
                   apiError={apiError}
                   modelPortfolios={modelPortfolios}
+                  portfolioValueHistory={portfolioValueHistory}
+                  setPortfolioValueHistory={setPortfolioValueHistory}
                 />
               </Col>
               <Col md={4}>
@@ -882,6 +987,7 @@ function App() {
                 <option value="modelPortfolios">Model Portfolios</option>
                 <option value="accounts">Accounts & Positions</option>
                 <option value="categories">Asset Categories</option>
+                <option value="snapshots">Portfolio Snapshots</option>
               </Form.Select>
             </Form.Group>
             
@@ -935,6 +1041,7 @@ function App() {
             <li>Accounts and positions</li>
             <li>Asset categories</li>
             <li>Stock prices</li>
+            <li>Portfolio value history & snapshots</li>
             <li>API settings</li>
           </ul>
           {backupStatus && (
