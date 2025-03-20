@@ -514,6 +514,9 @@ const CurrentPortfolio = ({
     ]);
     
     alert(`Portfolio snapshot recorded: ${formatDollarAmount(totalValue)}`);
+    
+    // Close the modal after taking a snapshot
+    setShowSnapshotModal(false);
   };
 
   return (
@@ -549,9 +552,6 @@ const CurrentPortfolio = ({
                   </Button>
                   <Button variant="success" onClick={handleSyncPrices} className="me-2">
                     Sync Prices
-                  </Button>
-                  <Button variant="outline-primary" onClick={handleTakeSnapshot} className="me-2">
-                    Take Snapshot
                   </Button>
                   <Button variant="primary" onClick={() => setShowSnapshotModal(true)} className="me-2">
                     Manage Snapshots
@@ -989,6 +989,22 @@ const CurrentPortfolio = ({
           <Modal.Title>Manage Portfolio Snapshots</Modal.Title>
         </Modal.Header>
         <Modal.Body>
+          {/* Quick Snapshot button */}
+          <div className="d-grid gap-2 mb-4">
+            <Button 
+              variant="success" 
+              size="lg" 
+              onClick={handleTakeSnapshot}
+              className="text-center"
+            >
+              <i className="bi bi-camera-fill me-2"></i>
+              Take Current Portfolio Snapshot
+            </Button>
+            <p className="text-center text-muted small mt-1">
+              Records the current total value of your portfolio with today's date and time.
+            </p>
+          </div>
+
           {/* Add New Snapshot Form */}
           <Form onSubmit={handleAddManualSnapshot} className="mb-4 p-3 border rounded">
             <h5>Add New Snapshot</h5>
@@ -1118,7 +1134,7 @@ const CurrentPortfolio = ({
           </div>
         </Modal.Body>
         <Modal.Footer>
-          <Button variant="secondary" onClick={() => setShowSnapshotModal(false)}>
+          <Button variant="primary" onClick={() => setShowSnapshotModal(false)}>
             Close
           </Button>
         </Modal.Footer>
