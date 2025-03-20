@@ -7,8 +7,8 @@ import { formatDollarAmount, formatNumber } from '../utils/formatters';
 // Register ChartJS components
 ChartJS.register(ArcElement, Tooltip, Legend);
 
-const AllocationChart = ({ accounts, categories, stockCategories, stockPrices, showHeader = true }) => {
-  // Generate random colors for categories
+const AggregatedAllocationChart = ({ accounts, categories, stockCategories, stockPrices, showHeader = true }) => {
+  // Generate colors for the grouped categories
   const generateColors = (count) => {
     const colors = [];
     for (let i = 0; i < count; i++) {
@@ -43,25 +43,79 @@ const AllocationChart = ({ accounts, categories, stockCategories, stockPrices, s
       });
     });
 
-    // Convert to percentages
-    if (totalValue > 0) {
-      Object.keys(categoryAllocations).forEach(categoryId => {
-        categoryAllocations[categoryId] = (categoryAllocations[categoryId] / totalValue) * 100;
-      });
-    }
-
     return { categoryAllocations, totalValue };
   };
 
   const { categoryAllocations, totalValue } = calculateAllocationByCategory();
 
+  // Group the categories as requested
+  const groupCategories = () => {
+    // Create a mapping of category IDs to their names
+    const categoryIdToName = {};
+    categories.forEach(cat => {
+      categoryIdToName[cat.id] = cat.name;
+    });
+
+    // Initialize grouped allocations
+    const groupedAllocations = {
+      'US': 0,
+      'Developed': 0,
+      'Emerging': 0,
+      'Bonds': 0,
+      'Other': 0
+    };
+
+    // Categorize each allocation into its group
+    Object.entries(categoryAllocations).forEach(([categoryId, allocation]) => {
+      const categoryName = categoryIdToName[categoryId] || 'Uncategorized';
+      
+      if (categoryName === 'US Large Cap' || categoryName === 'US Small Cap') {
+        groupedAllocations['US'] += allocation;
+      } else if (categoryName === 'International Developed Markets' || categoryName === 'International Small Cap') {
+        groupedAllocations['Developed'] += allocation;
+      } else if (categoryName === 'Emerging Markets' || categoryName === 'Emerging Small Cap') {
+        groupedAllocations['Emerging'] += allocation;
+      } else if (categoryName === 'Bonds') {
+        groupedAllocations['Bonds'] += allocation;
+      } else {
+        groupedAllocations['Other'] += allocation;
+      }
+    });
+
+    // Convert to percentages
+    if (totalValue > 0) {
+      Object.keys(groupedAllocations).forEach(group => {
+        groupedAllocations[group] = (groupedAllocations[group] / totalValue) * 100;
+      });
+    }
+
+    return groupedAllocations;
+  };
+
+  const groupedAllocations = groupCategories();
+
+  // Order the groups logically
+  const orderedGroups = ['US', 'Developed', 'Emerging', 'Bonds', 'Other'];
+  
+  // Define a distinct color palette for the grouped chart with higher contrast
+  const groupColors = {
+    'US': '#2E5EAA',         // Deep blue
+    'Developed': '#33A02C',  // Green
+    'Emerging': '#E31A1C',   // Red
+    'Bonds': '#FF8C00',      // Orange
+    'Other': '#6A3D9A'       // Purple
+  };
+
+  // Use the custom color palette
+  const groupColorArray = orderedGroups.map(group => groupColors[group]);
+  
   // Prepare data for the pie chart
   const chartData = {
-    labels: categories.map(cat => cat.name).concat(['Uncategorized']),
+    labels: orderedGroups,
     datasets: [
       {
-        data: categories.map(cat => categoryAllocations[cat.id] || 0).concat([categoryAllocations['uncategorized'] || 0]),
-        backgroundColor: generateColors(categories.length + 1),
+        data: orderedGroups.map(group => groupedAllocations[group] || 0),
+        backgroundColor: groupColorArray,
         borderWidth: 1,
       },
     ],
@@ -117,7 +171,7 @@ const AllocationChart = ({ accounts, categories, stockCategories, stockPrices, s
   return (
     <Card className="h-100">
       <Card.Header>
-        <h5 className="mb-0">Asset Allocation</h5>
+        <h5 className="mb-0">Grouped Asset Allocation</h5>
       </Card.Header>
       <Card.Body>
         {renderChart()}
@@ -129,4 +183,4 @@ const AllocationChart = ({ accounts, categories, stockCategories, stockPrices, s
   );
 };
 
-export default AllocationChart;
+export default AggregatedAllocationChart; 

@@ -42,9 +42,10 @@
 }
 
 .chart-container {
-  position: relative;
-  height: 300px;
-  width: 100%;
+  width: 100% !important;
+  height: 100% !important;
+  position: relative !important;
+  margin: 0 auto !important;
 }
 
 .comparison-table .table-success {
@@ -88,4 +89,83 @@
 /* Add visual space between accounts */
 .mb-3 {
   margin-bottom: 1rem !important;
+}
+
+/* Add styles for the divider to ensure it doesn't overlap */
+.chart-divider {
+  margin: 2rem 0;
+  border-top: 1px solid rgba(0, 0, 0, 0.1);
+  clear: both;
+  width: 75%;
+}
+
+/* Enhanced visual separator between charts */
+.chart-visual-separator {
+  border-top: none;
+  height: 1px;
+  background-image: linear-gradient(to right, rgba(0, 0, 0, 0), rgba(0, 0, 0, 0.15), rgba(0, 0, 0, 0));
+  margin: 2.5rem auto;
+}
+
+/* Ensure chart wrappers have proper sizing */
+.chart-wrapper {
+  height: 350px !important;
+  width: 100% !important;
+  position: relative !important;
+  margin: 0 auto !important;
+}
+
+/* Ensure both charts have identical vertical spacing */
+.allocation-section {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 30px !important;
+}
+
+/* Make sure the chart canvas is consistent in both charts */
+.chart-container canvas {
+  display: block !important;
+  position: relative !important;
+}
+
+/* Clear the previous legend positioning rules */
+.chart-container .chartjs-legend, 
+.chartjs-render-monitor + div {
+  padding-left: 0 !important;
+  margin-left: 0 !important;
+}
+
+/* Fix the chart containers in the PortfolioComparison component */
+.comparison-chart-container {
+  height: 300px !important;
+  width: 100% !important;
+  position: relative !important;
+  margin: 0 auto !important;
+}
+
+/* Prevent chart overflow issues */
+.chart-container, .comparison-chart-container {
+  overflow: visible !important;
+  max-height: 350px !important;
+}
+
+/* Prevent chart resizing issues */
+.chartjs-size-monitor,
+.chartjs-size-monitor-expand,
+.chartjs-size-monitor-shrink {
+  position: absolute !important;
+  width: 100% !important;
+  height: 100% !important;
+  max-height: 350px !important;
+  overflow: hidden !important;
+}
+
+/* Force chart canvas to maintain size */
+canvas.chartjs-render-monitor {
+  display: block !important;
+  width: 100% !important;
+  height: 100% !important;
+  max-height: 350px !important;
 }

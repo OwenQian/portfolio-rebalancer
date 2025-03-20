@@ -1177,9 +1177,16 @@ const PortfolioComparison = ({
     plugins: {
       legend: {
         position: 'right',
+        align: 'center',
         labels: {
-          boxWidth: 12
-        }
+          boxWidth: 12,
+          font: {
+            size: 11
+          },
+          padding: 8
+        },
+        display: true,
+        maxWidth: 120
       },
       tooltip: {
         callbacks: {
@@ -1563,13 +1570,13 @@ const PortfolioComparison = ({
                             <Row>
                               <Col md={6}>
                                 <h6 className="text-center mb-3">Model Portfolio</h6>
-                                <div className="chart-container" style={{ height: '250px' }}>
+                                <div className="comparison-chart-container">
                                   <Pie data={getChartData(modelAllocation, 'Model Allocation')} options={chartOptions} />
                                 </div>
                               </Col>
                               <Col md={6}>
                                 <h6 className="text-center mb-3">Projected Portfolio</h6>
-                                <div className="chart-container" style={{ height: '250px' }}>
+                                <div className="comparison-chart-container">
                                   <Pie 
                                     data={getChartData(simulatedAllocation, 'Projected Allocation')} 
                                     options={chartOptions} 
@@ -1657,13 +1664,13 @@ const PortfolioComparison = ({
                   <Row>
                     <Col md={6}>
                       <h5 className="text-center mb-3">Model Portfolio</h5>
-                      <div className="chart-container" style={{ height: '300px' }}>
+                      <div className="comparison-chart-container">
                         <Pie data={getChartData(modelAllocation, 'Model Allocation')} options={chartOptions} />
                       </div>
                     </Col>
                     <Col md={6}>
                       <h5 className="text-center mb-3">{whatIfDirty ? 'Simulated Portfolio' : 'Current Portfolio'}</h5>
-                      <div className="chart-container" style={{ height: '300px' }}>
+                      <div className="comparison-chart-container">
                         <Pie 
                           data={getChartData(
                             whatIfDirty ? simulatedAllocation : currentAllocation, 

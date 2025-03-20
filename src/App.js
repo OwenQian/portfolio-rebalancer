@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Container, Row, Col, Tabs, Tab, Button, Modal, Form } from 'react-bootstrap';
+import { Container, Row, Col, Tabs, Tab, Button, Modal, Form, Card } from 'react-bootstrap';
 import 'bootstrap/dist/css/bootstrap.min.css';
 import './App.css';
+import { formatDollarAmount } from './utils/formatters';
 
 // Import Components
 import Header from './components/Header';
@@ -10,6 +11,7 @@ import CurrentPortfolio from './components/CurrentPortfolio';
 import PortfolioComparison from './components/PortfolioComparison';
 import CategoryManager from './components/CategoryManager';
 import AllocationChart from './components/AllocationChart';
+import AggregatedAllocationChart from './components/AggregatedAllocationChart';
 
 // Import File Storage Utils
 import { 
@@ -850,17 +852,6 @@ function App() {
     }
   };
 
-  // Function to calculate total portfolio value based on accounts and prices
-  const calculateTotalPortfolioValue = (accountsList, priceData) => {
-    return accountsList.reduce((total, account) => {
-      const accountTotal = account.positions.reduce((accTotal, position) => {
-        const price = priceData[position.symbol] || 0;
-        return accTotal + (price * position.shares);
-      }, 0);
-      return total + accountTotal;
-    }, 0).toFixed(2);
-  };
-
   // Function to record a snapshot of the current portfolio value
   const recordPortfolioSnapshot = (value, type = 'snapshot') => {
     setPortfolioValueHistory(prev => {
@@ -872,6 +863,17 @@ function App() {
       ];
     });
     return value;
+  };
+
+  // Make calculateTotalPortfolioValue available for JSX
+  const calculateTotalPortfolioValue = (accountsList, priceData) => {
+    return accountsList.reduce((total, account) => {
+      const accountTotal = account.positions.reduce((accTotal, position) => {
+        const price = priceData[position.symbol] || 0;
+        return accTotal + (price * position.shares);
+      }, 0);
+      return total + accountTotal;
+    }, 0).toFixed(2);
   };
 
   return (
@@ -942,12 +944,45 @@ function App() {
                 />
               </Col>
               <Col md={4}>
-                <AllocationChart 
-                  accounts={accounts} 
-                  categories={categories}
-                  stockCategories={stockCategories}
-                  stockPrices={stockPrices}
-                />
+                <Card className="h-100">
+                  <Card.Header>
+                    <h5 className="mb-0">Asset Allocation</h5>
+                  </Card.Header>
+                  <Card.Body>
+                    <div className="allocation-section">
+                      <h5 className="mb-4 mt-2 text-center fw-bold">Detailed Allocation</h5>
+                      <div className="chart-wrapper">
+                        <AllocationChart 
+                          accounts={accounts} 
+                          categories={categories}
+                          stockCategories={stockCategories}
+                          stockPrices={stockPrices}
+                          showHeader={false}
+                        />
+                      </div>
+                    </div>
+                    
+                    <hr className="chart-divider chart-visual-separator" />
+                    
+                    <div className="allocation-section">
+                      <h5 className="mb-4 mt-2 text-center fw-bold">Grouped Allocation</h5>
+                      <div className="chart-wrapper">
+                        <AggregatedAllocationChart
+                          accounts={accounts} 
+                          categories={categories}
+                          stockCategories={stockCategories}
+                          stockPrices={stockPrices}
+                          showHeader={false}
+                        />
+                      </div>
+                    </div>
+                  </Card.Body>
+                  <Card.Footer className="text-muted">
+                    Total Portfolio Value: {formatDollarAmount(
+                      calculateTotalPortfolioValue(accounts, stockPrices)
+                    )}
+                  </Card.Footer>
+                </Card>
               </Col>
             </Row>
           </Tab>
