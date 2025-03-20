@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Card, Button, Table, Form, Row, Col, Modal, Badge, Accordion, Spinner, Alert } from 'react-bootstrap';
 import { formatDollarAmount } from '../utils/formatters';
 import PortfolioValueChart from './PortfolioValueChart';
@@ -56,12 +56,8 @@ const CurrentPortfolio = ({
 
   // Update expandedAccounts when accounts are added or removed
   useEffect(() => {
-    // Default to having first account expanded when accounts change
-    if (accounts.length > 0) {
-      setExpandedAccounts(['0']);
-    } else {
-      setExpandedAccounts([]);
-    }
+    // Default to having all accounts collapsed when accounts change
+    setExpandedAccounts([]);
   }, [accounts.length]);
 
   const getAllUniqueStockSymbols = () => {
@@ -503,7 +499,7 @@ const CurrentPortfolio = ({
   };
 
   // Update sorted snapshot history whenever portfolio value history changes
-  const updateSortedSnapshotHistory = () => {
+  const updateSortedSnapshotHistory = useCallback(() => {
     // Check if portfolioValueHistory is an array
     if (!portfolioValueHistory || !Array.isArray(portfolioValueHistory)) {
       setSortedSnapshotHistory([]);
@@ -515,7 +511,7 @@ const CurrentPortfolio = ({
       new Date(b.date) - new Date(a.date)
     );
     setSortedSnapshotHistory(sorted);
-  };
+  }, [portfolioValueHistory]);
 
   // Initialize date input with current date and time when opening modal
   useEffect(() => {
@@ -532,7 +528,7 @@ const CurrentPortfolio = ({
   // Update sorted history whenever the original history changes
   useEffect(() => {
     updateSortedSnapshotHistory();
-  }, [portfolioValueHistory]);
+  }, [updateSortedSnapshotHistory]);
 
   // Take a snapshot of the current portfolio value
   const handleTakeSnapshot = () => {
@@ -750,137 +746,124 @@ const CurrentPortfolio = ({
         </Card>
       ) : (
         <>
-          <Card className="mb-4">
-            <Card.Header>
-              <h5 className="mb-0">Portfolio Summary</h5>
-            </Card.Header>
-            <Card.Body>
-              <Table bordered>
-                <thead>
-                  <tr>
-                    <th>Total Portfolio Value</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td className="h4 text-center">{formatDollarAmount(calculatePortfolioTotal())}</td>
-                  </tr>
-                </tbody>
-              </Table>
-            </Card.Body>
-          </Card>
-
-          <div className="d-flex justify-content-end mb-3">
-            <Button 
-              variant="outline-primary" 
-              size="sm" 
-              className="me-2"
-              onClick={expandAllAccounts}
-            >
-              Expand All
-            </Button>
-            <Button 
-              variant="outline-secondary" 
-              size="sm"
-              onClick={collapseAllAccounts}
-            >
-              Collapse All
-            </Button>
+          <div className="d-flex justify-content-between align-items-center mb-3">
+            <div>
+              <h5 className="mb-0">Accounts</h5>
+            </div>
+            <div>
+              <Button 
+                variant="outline-primary" 
+                size="sm" 
+                className="me-2"
+                onClick={expandAllAccounts}
+              >
+                Expand All
+              </Button>
+              <Button 
+                variant="outline-secondary" 
+                size="sm"
+                onClick={collapseAllAccounts}
+              >
+                Collapse All
+              </Button>
+            </div>
           </div>
 
           <Accordion activeKey={expandedAccounts} alwaysOpen onSelect={(keys) => setExpandedAccounts(keys || [])}>
             {accounts.map((account, accountIndex) => (
-              <Accordion.Item key={account.id} eventKey={accountIndex.toString()}>
-                <Accordion.Header>
-                  <div className="d-flex justify-content-between align-items-center w-100 me-3">
-                    <span>{account.name}</span>
-                    <span className="text-primary">{formatDollarAmount(calculateAccountTotal(account))}</span>
-                  </div>
-                </Accordion.Header>
-                <Accordion.Body>
-                  <div className="mb-3 d-flex justify-content-between">
-                    <Button variant="success" size="sm" onClick={() => handleAddPosition(account)}>
-                      Add Position
-                    </Button>
-                    <Button variant="danger" size="sm" onClick={() => handleDeleteAccount(account.id)}>
-                      Delete Account
-                    </Button>
-                  </div>
-
-                  {account.positions.length === 0 ? (
-                    <p className="text-center">No positions in this account yet.</p>
-                  ) : (
-                    <div className="table-responsive">
-                      <Table striped bordered hover>
-                        <thead>
-                          <tr>
-                            <th>Symbol</th>
-                            <th>Category</th>
-                            <th>Shares</th>
-                            <th>Price</th>
-                            <th>Value</th>
-                            <th>Actions</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {account.positions.map((position, positionIndex) => (
-                            <tr key={positionIndex}>
-                              <td>{position.symbol}</td>
-                              <td>
-                                {editingAssets ? (
-                                  tempCategories[position.symbol] ? (
-                                    <Badge bg="info">
-                                      {categories.find(cat => cat.id === tempCategories[position.symbol])?.name || 'Unknown'}
-                                    </Badge>
-                                  ) : (
-                                    <Badge bg="secondary">Uncategorized</Badge>
-                                  )
-                                ) : (
-                                  stockCategories[position.symbol] ? (
-                                    <Badge bg="info">
-                                      {categories.find(cat => cat.id === stockCategories[position.symbol])?.name || 'Unknown'}
-                                    </Badge>
-                                  ) : (
-                                    <Badge bg="secondary">Uncategorized</Badge>
-                                  )
-                                )}
-                              </td>
-                              <td>
-                                <Form.Control
-                                  type="number"
-                                  size="sm"
-                                  value={position.shares}
-                                  onChange={(e) => handleUpdateShares(account.id, positionIndex, e.target.value)}
-                                />
-                              </td>
-                              <td>
-                                {formatDollarAmount(editingAssets ? tempPrices[position.symbol] || '0.00' : stockPrices[position.symbol] || '0.00')}
-                              </td>
-                              <td>{formatDollarAmount(calculatePositionValue(position.symbol, position.shares))}</td>
-                              <td>
-                                <Button
-                                  variant="outline-danger"
-                                  size="sm"
-                                  onClick={() => handleDeletePosition(account.id, positionIndex)}
-                                >
-                                  Delete
-                                </Button>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                        <tfoot>
-                          <tr>
-                            <th colSpan="4" className="text-end">Total:</th>
-                            <th>{formatDollarAmount(calculateAccountTotal(account))}</th>
-                            <th></th>
-                          </tr>
-                        </tfoot>
-                      </Table>
+              <div key={account.id} className="mb-3">
+                <Accordion.Item eventKey={accountIndex.toString()}>
+                  <Accordion.Header>
+                    <div className="d-flex justify-content-between align-items-center w-100">
+                      <span>{account.name}</span>
+                      <span className="text-primary">{formatDollarAmount(calculateAccountTotal(account))}</span>
                     </div>
-                  )}
-                </Accordion.Body>
-              </Accordion.Item>
+                  </Accordion.Header>
+                  <Accordion.Body>
+                    <div className="mb-3 d-flex justify-content-between">
+                      <Button variant="success" size="sm" onClick={() => handleAddPosition(account)}>
+                        Add Position
+                      </Button>
+                      <Button variant="danger" size="sm" onClick={() => handleDeleteAccount(account.id)}>
+                        Delete Account
+                      </Button>
+                    </div>
+
+                    {account.positions.length === 0 ? (
+                      <p className="text-center">No positions in this account yet.</p>
+                    ) : (
+                      <div className="table-responsive">
+                        <Table striped bordered hover>
+                          <thead>
+                            <tr>
+                              <th>Symbol</th>
+                              <th>Category</th>
+                              <th>Shares</th>
+                              <th>Price</th>
+                              <th>Value</th>
+                              <th>Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {account.positions.map((position, positionIndex) => (
+                              <tr key={positionIndex}>
+                                <td>{position.symbol}</td>
+                                <td>
+                                  {editingAssets ? (
+                                    tempCategories[position.symbol] ? (
+                                      <Badge bg="info">
+                                        {categories.find(cat => cat.id === tempCategories[position.symbol])?.name || 'Unknown'}
+                                      </Badge>
+                                    ) : (
+                                      <Badge bg="secondary">Uncategorized</Badge>
+                                    )
+                                  ) : (
+                                    stockCategories[position.symbol] ? (
+                                      <Badge bg="info">
+                                        {categories.find(cat => cat.id === stockCategories[position.symbol])?.name || 'Unknown'}
+                                      </Badge>
+                                    ) : (
+                                      <Badge bg="secondary">Uncategorized</Badge>
+                                    )
+                                  )}
+                                </td>
+                                <td>
+                                  <Form.Control
+                                    type="number"
+                                    size="sm"
+                                    value={position.shares}
+                                    onChange={(e) => handleUpdateShares(account.id, positionIndex, e.target.value)}
+                                  />
+                                </td>
+                                <td>
+                                  {formatDollarAmount(editingAssets ? tempPrices[position.symbol] || '0.00' : stockPrices[position.symbol] || '0.00')}
+                                </td>
+                                <td>{formatDollarAmount(calculatePositionValue(position.symbol, position.shares))}</td>
+                                <td>
+                                  <Button
+                                    variant="outline-danger"
+                                    size="sm"
+                                    onClick={() => handleDeletePosition(account.id, positionIndex)}
+                                  >
+                                    Delete
+                                  </Button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                          <tfoot>
+                            <tr>
+                              <th colSpan="4" className="text-end">Total:</th>
+                              <th>{formatDollarAmount(calculateAccountTotal(account))}</th>
+                              <th></th>
+                            </tr>
+                          </tfoot>
+                        </Table>
+                      </div>
+                    )}
+                  </Accordion.Body>
+                </Accordion.Item>
+              </div>
             ))}
           </Accordion>
         </>
@@ -1016,7 +999,6 @@ const CurrentPortfolio = ({
               onClick={handleTakeSnapshot}
               className="text-center"
             >
-              <i className="bi bi-camera-fill me-2"></i>
               Take Current Portfolio Snapshot
             </Button>
             <p className="text-center text-muted small mt-1">

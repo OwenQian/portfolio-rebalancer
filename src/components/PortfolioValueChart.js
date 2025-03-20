@@ -10,8 +10,8 @@ ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, C
 
 const PortfolioValueChart = ({ portfolioValueHistory }) => {
   const [timeRange, setTimeRange] = useState('all'); // 'all', '1m', '3m', '6m', '1y'
-  const [isExpanded, setIsExpanded] = useState(true); // Default to expanded
-  const [showChangeMetrics, setShowChangeMetrics] = useState(true); // Default to showing change metrics
+  const [isExpanded, setIsExpanded] = useState(false); // Default to collapsed
+  const [showChangeMetrics, setShowChangeMetrics] = useState(false); // Default to hiding change metrics
   
   // Ensure portfolioValueHistory is an array
   const safeHistory = Array.isArray(portfolioValueHistory) ? portfolioValueHistory : [];
