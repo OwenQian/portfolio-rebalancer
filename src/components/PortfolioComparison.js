@@ -1725,13 +1725,43 @@ const PortfolioComparison = ({
                               </InputGroup>
                             </Form.Group>
                           </Col>
-                          <Col md={3} className="mb-3">
-                            <Button 
-                              variant="outline-secondary" 
-                              onClick={() => setNewInvestmentAmount('')}
-                            >
-                              Reset
-                            </Button>
+                          <Col md={6} className="mb-3">
+                            <div className="d-flex gap-2">
+                              <Button 
+                                variant="outline-secondary" 
+                                size="sm"
+                                onClick={() => setNewInvestmentAmount(
+                                  (parseFloat(newInvestmentAmount) || 0) + 10000
+                                )}
+                              >
+                                +$10,000
+                              </Button>
+                              <Button 
+                                variant="outline-secondary" 
+                                size="sm"
+                                onClick={() => setNewInvestmentAmount(
+                                  (parseFloat(newInvestmentAmount) || 0) + 25000
+                                )}
+                              >
+                                +$25,000
+                              </Button>
+                              <Button 
+                                variant="outline-secondary" 
+                                size="sm"
+                                onClick={() => setNewInvestmentAmount(
+                                  (parseFloat(newInvestmentAmount) || 0) + 100000
+                                )}
+                              >
+                                +$100,000
+                              </Button>
+                              <Button 
+                                variant="outline-secondary" 
+                                size="sm"
+                                onClick={() => setNewInvestmentAmount('')}
+                              >
+                                Reset
+                              </Button>
+                            </div>
                           </Col>
                         </Row>
                         
