@@ -45,15 +45,6 @@ const CurrentPortfolio = ({
   const [newSnapshotDate, setNewSnapshotDate] = useState('');
   const [isErrorDismissed, setIsErrorDismissed] = useState(false);
 
-  const expandAllAccounts = () => {
-    const allAccountKeys = accounts.map((_, index) => index.toString());
-    setExpandedAccounts(allAccountKeys);
-  };
-
-  const collapseAllAccounts = () => {
-    setExpandedAccounts([]);
-  };
-
   // Update expandedAccounts when accounts are added or removed
   useEffect(() => {
     // Default to having all accounts collapsed when accounts change
@@ -753,18 +744,13 @@ const CurrentPortfolio = ({
             <div>
               <Button 
                 variant="outline-primary" 
-                size="sm" 
-                className="me-2"
-                onClick={expandAllAccounts}
-              >
-                Expand All
-              </Button>
-              <Button 
-                variant="outline-secondary" 
                 size="sm"
-                onClick={collapseAllAccounts}
+                onClick={() => {
+                  const allAccountKeys = accounts.map((_, index) => index.toString());
+                  setExpandedAccounts(expandedAccounts.length === accounts.length ? [] : allAccountKeys);
+                }}
               >
-                Collapse All
+                {expandedAccounts.length === accounts.length ? 'Collapse All' : 'Expand All'}
               </Button>
             </div>
           </div>
