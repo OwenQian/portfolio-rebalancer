@@ -88,6 +88,47 @@ function App() {
   const [exportStatus, setExportStatus] = useState('');
   const [exportDataType, setExportDataType] = useState('all');
 
+  // Validate imported data structure
+  const validateImportedData = (data) => {
+    // First, make sure data is an object
+    if (!data || typeof data !== 'object' || Array.isArray(data)) {
+      return false;
+    }
+    
+    // At a minimum, we should have at least one of these key properties
+    const requiredKeys = ['modelPortfolios', 'accounts', 'categories', 'stockCategories', 'portfolioValueHistory'];
+    const hasAtLeastOneKey = requiredKeys.some(key => key in data);
+    
+    if (!hasAtLeastOneKey) {
+      return false;
+    }
+    
+    // Check if the data has the expected structure for each key
+    if (data.modelPortfolios && !Array.isArray(data.modelPortfolios)) {
+      return false;
+    }
+    
+    if (data.accounts && !Array.isArray(data.accounts)) {
+      return false;
+    }
+    
+    if (data.categories && !Array.isArray(data.categories)) {
+      return false;
+    }
+    
+    // For stock categories, we expect an object
+    if (data.stockCategories && typeof data.stockCategories !== 'object') {
+      return false;
+    }
+    
+    // For portfolioValueHistory, we expect an array
+    if (data.portfolioValueHistory && !Array.isArray(data.portfolioValueHistory)) {
+      return false;
+    }
+    
+    return true;
+  };
+
   // Helper function to update state with imported data - wrapped in useCallback
   const importPortfolioData = useCallback((data) => {
     // Update all the state with loaded data
@@ -113,6 +154,12 @@ function App() {
           
           if (!data) {
             setRestoreStatus('No automatic backup found.');
+            return;
+          }
+          
+          // Validate the imported data structure before applying
+          if (!validateImportedData(data)) {
+            setRestoreStatus('Invalid data format in automatic backup. Restore failed.');
             return;
           }
           
@@ -486,42 +533,6 @@ function App() {
     }
   };
   
-  // Validate imported data structure
-  const validateImportedData = (data) => {
-    // At a minimum, we should have at least one of these key properties
-    const requiredKeys = ['modelPortfolios', 'accounts', 'categories', 'stockCategories', 'portfolioValueHistory'];
-    const hasAtLeastOneKey = requiredKeys.some(key => key in data);
-    
-    if (!hasAtLeastOneKey) {
-      return false;
-    }
-    
-    // Check if the data has the expected structure for each key
-    if (data.modelPortfolios && !Array.isArray(data.modelPortfolios)) {
-      return false;
-    }
-    
-    if (data.accounts && !Array.isArray(data.accounts)) {
-      return false;
-    }
-    
-    if (data.categories && !Array.isArray(data.categories)) {
-      return false;
-    }
-    
-    // For stock categories, we expect an object
-    if (data.stockCategories && typeof data.stockCategories !== 'object') {
-      return false;
-    }
-    
-    // For portfolioValueHistory, we expect an array
-    if (data.portfolioValueHistory && !Array.isArray(data.portfolioValueHistory)) {
-      return false;
-    }
-    
-    return true;
-  };
-  
   // Function to handle pasting JSON directly
   const handlePasteJson = () => {
     try {
@@ -582,13 +593,14 @@ function App() {
 
   // Function to export data to JSON
   const exportToJson = (data) => {
+    if (!data) return 'No data to export';
     return JSON.stringify(data, null, 2);
   };
   
   // Function to convert JSON to CSV
   const convertToCSV = (data) => {
     try {
-      if (!data || !Array.isArray(data) || data.length === 0) {
+      if (!data || !Array.isArray(data) || data.length === 0 || !data[0]) {
         return 'No data to export';
       }
       
