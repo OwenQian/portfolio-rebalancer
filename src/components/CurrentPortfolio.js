@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, Button, Table, Form, Row, Col, Modal, Badge, Accordion, Spinner, Alert } from 'react-bootstrap';
 import { formatDollarAmount } from '../utils/formatters';
 
@@ -31,6 +31,26 @@ const CurrentPortfolio = ({
   const [tempCategories, setTempCategories] = useState({...stockCategories});
   const [tempApiKey, setTempApiKey] = useState(marketstackApiKey);
   const [newPrice, setNewPrice] = useState('');
+  const [expandedAccounts, setExpandedAccounts] = useState(Array(accounts.length).fill(true).map((_, i) => i.toString()));
+
+  const expandAllAccounts = () => {
+    const allAccountKeys = accounts.map((_, index) => index.toString());
+    setExpandedAccounts(allAccountKeys);
+  };
+
+  const collapseAllAccounts = () => {
+    setExpandedAccounts([]);
+  };
+
+  // Update expandedAccounts when accounts are added or removed
+  useEffect(() => {
+    // Default to having first account expanded when accounts change
+    if (accounts.length > 0) {
+      setExpandedAccounts(['0']);
+    } else {
+      setExpandedAccounts([]);
+    }
+  }, [accounts.length]);
 
   const getAllUniqueStockSymbols = () => {
     const symbols = new Set();
@@ -500,7 +520,25 @@ const CurrentPortfolio = ({
             </Card.Body>
           </Card>
 
-          <Accordion defaultActiveKey="0">
+          <div className="d-flex justify-content-end mb-3">
+            <Button 
+              variant="outline-primary" 
+              size="sm" 
+              className="me-2"
+              onClick={expandAllAccounts}
+            >
+              Expand All
+            </Button>
+            <Button 
+              variant="outline-secondary" 
+              size="sm"
+              onClick={collapseAllAccounts}
+            >
+              Collapse All
+            </Button>
+          </div>
+
+          <Accordion activeKey={expandedAccounts} alwaysOpen onSelect={(keys) => setExpandedAccounts(keys || [])}>
             {accounts.map((account, accountIndex) => (
               <Accordion.Item key={account.id} eventKey={accountIndex.toString()}>
                 <Accordion.Header>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Card, Table, Row, Col, Form, Button, Alert, Badge, InputGroup } from 'react-bootstrap';
 import { Pie } from 'react-chartjs-2';
 import { Chart as ChartJS, ArcElement, Tooltip, Legend } from 'chart.js';
@@ -23,7 +23,7 @@ const PortfolioComparison = ({
   const [rebalanceActions, setRebalanceActions] = useState([]);
   const [totalPortfolioValue, setTotalPortfolioValue] = useState(0);
   const [specificRebalancingSuggestions, setSpecificRebalancingSuggestions] = useState([]);
-  const [showSpecificSuggestions, setShowSpecificSuggestions] = useState(false);
+  const [showSpecificSuggestions] = useState(false);
   
   // What-if analysis states
   const [showWhatIfAnalysis, setShowWhatIfAnalysis] = useState(false);
@@ -50,7 +50,7 @@ const PortfolioComparison = ({
   };
 
   // Calculate model portfolio allocation by category
-  const calculateModelAllocation = (portfolioId) => {
+  const calculateModelAllocation = useCallback((portfolioId) => {
     if (!portfolioId) return {};
 
     const selectedPortfolio = modelPortfolios.find(p => p.name === portfolioId);
@@ -80,10 +80,10 @@ const PortfolioComparison = ({
     }
 
     return allocation;
-  };
+  }, [categories, modelPortfolios, stockCategories]);
 
   // Calculate current portfolio allocation by category
-  const calculateCurrentAllocation = () => {
+  const calculateCurrentAllocation = useCallback(() => {
     const allocation = {};
     let totalValue = 0;
 
@@ -116,10 +116,25 @@ const PortfolioComparison = ({
     setTotalPortfolioValue(totalValue);
 
     return allocation;
-  };
+  }, [accounts, categories, stockCategories, stockPrices]);
   
+  // Calculate deviations between model and current allocations
+  const calculateDeviations = useCallback((model, current) => {
+    const deviations = {};
+    
+    categories.forEach(category => {
+      const modelAlloc = model[category.id] || 0;
+      const currentAlloc = current[category.id] || 0;
+      deviations[category.id] = currentAlloc - modelAlloc;
+    });
+    
+    deviations['uncategorized'] = (current['uncategorized'] || 0) - (model['uncategorized'] || 0);
+    
+    return deviations;
+  }, [categories]);
+
   // Simulate allocation changes based on buying/selling in a category
-  const simulateAllocationChange = () => {
+  const simulateAllocationChange = useCallback(() => {
     if (!whatIfCategory || !whatIfAmount || isNaN(parseFloat(whatIfAmount)) || parseFloat(whatIfAmount) <= 0) {
       // Reset to current allocation if invalid input
       setSimulatedAllocation(currentAllocation);
@@ -168,43 +183,26 @@ const PortfolioComparison = ({
     setSimulatedAllocation(newAllocation);
     setSimulatedDeviations(newDeviations);
     setWhatIfDirty(true);
-  };
-  
+  }, [whatIfCategory, whatIfAction, whatIfAmount, currentAllocation, deviations, calculateDeviations, modelAllocation, totalPortfolioValue]);
+
   // Reset simulation to current allocation
-  const resetSimulation = () => {
+  const resetSimulation = useCallback(() => {
     setWhatIfCategory('');
     setWhatIfAction('buy');
     setWhatIfAmount('');
     setSimulatedAllocation(currentAllocation);
     setSimulatedDeviations(deviations);
     setWhatIfDirty(false);
-  };
-
-  // Calculate deviations between model and current allocations
-  const calculateDeviations = (model, current) => {
-    const deviations = {};
-    
-    categories.forEach(category => {
-      const modelAlloc = model[category.id] || 0;
-      const currentAlloc = current[category.id] || 0;
-      deviations[category.id] = currentAlloc - modelAlloc;
-    });
-    
-    deviations['uncategorized'] = (current['uncategorized'] || 0) - (model['uncategorized'] || 0);
-    
-    return deviations;
-  };
+  }, [currentAllocation, deviations]);
 
   // Generate rebalancing suggestions
-  const generateRebalanceActions = () => {
+  const generateRebalanceActions = useCallback(() => {
     if (!selectedModelPortfolio || totalPortfolioValue <= 0) return [];
     
     const actions = [];
     
     categories.forEach(category => {
       const deviation = deviations[category.id] || 0;
-      const modelAlloc = modelAllocation[category.id] || 0;
-      const currentAlloc = currentAllocation[category.id] || 0;
       
       // Only suggest actions for significant deviations (greater than 1%)
       if (Math.abs(deviation) > 1) {
@@ -253,10 +251,10 @@ const PortfolioComparison = ({
     }
     
     return actions;
-  };
+  }, [categories, deviations, selectedModelPortfolio, totalPortfolioValue]);
 
   // Generate specific stock-level rebalancing suggestions
-  const generateSpecificSuggestions = () => {
+  const generateSpecificSuggestions = useCallback(() => {
     if (!selectedModelPortfolio || totalPortfolioValue <= 0) return [];
     
     const selectedPortfolio = modelPortfolios.find(p => p.name === selectedModelPortfolio);
@@ -355,10 +353,10 @@ const PortfolioComparison = ({
       }
       return parseFloat(b.value) - parseFloat(a.value);
     });
-  };
+  }, [accounts, categories, modelPortfolios, selectedModelPortfolio, stockCategories, stockPrices, totalPortfolioValue]);
 
   // Generate buy-only rebalancing suggestions
-  const generateBuyOnlySuggestions = (investmentAmount) => {
+  const generateBuyOnlySuggestions = useCallback((investmentAmount) => {
     if (!selectedModelPortfolio || totalPortfolioValue <= 0 || !investmentAmount) return [];
     
     const amount = parseFloat(investmentAmount);
@@ -641,7 +639,7 @@ const PortfolioComparison = ({
     
     // Return both suggestions and projected allocations
     return {suggestions, projections: projectionsData};
-  };
+  }, [accounts, categories, currentAllocation, modelAllocation, modelPortfolios, selectedModelPortfolio, stockCategories, stockPrices, totalPortfolioValue, calculateDeviations]);
 
   // Update calculations when model portfolio selection changes
   useEffect(() => {
@@ -657,20 +655,20 @@ const PortfolioComparison = ({
       setSimulatedDeviations(newDeviations);
       setWhatIfDirty(false);
     }
-  }, [selectedModelPortfolio]);
+  }, [selectedModelPortfolio, calculateModelAllocation, calculateCurrentAllocation, calculateDeviations]);
 
   // Update rebalance actions when deviations change
   useEffect(() => {
     setRebalanceActions(generateRebalanceActions());
     setSpecificRebalancingSuggestions(generateSpecificSuggestions());
-  }, [deviations, totalPortfolioValue, selectedModelPortfolio]);
+  }, [deviations, totalPortfolioValue, selectedModelPortfolio, generateRebalanceActions, generateSpecificSuggestions]);
 
   // Run simulation when parameters change
   useEffect(() => {
     if (showWhatIfAnalysis && whatIfCategory) {
       simulateAllocationChange();
     }
-  }, [whatIfCategory, whatIfAction, whatIfAmount, showWhatIfAnalysis]);
+  }, [whatIfCategory, whatIfAction, whatIfAmount, showWhatIfAnalysis, simulateAllocationChange]);
 
   // Calculate buy-only rebalancing suggestions when investment amount changes
   useEffect(() => {
@@ -691,7 +689,7 @@ const PortfolioComparison = ({
         setSimulatedDeviations(projections.deviations);
       }
     }
-  }, [newInvestmentAmount, showBuyOnlyRebalancing]);
+  }, [newInvestmentAmount, showBuyOnlyRebalancing, generateBuyOnlySuggestions]);
 
   // Handle changes in buy-only trade selection
   const handleTradeSelectionChange = (index, checked) => {
@@ -1464,6 +1462,7 @@ const PortfolioComparison = ({
                                     <th>Target %</th>
                                     <th>Deviation</th>
                                     <th>Projected %</th>
+                                    <th>Projected Deviation</th>
                                   </tr>
                                 </thead>
                                 <tbody>
@@ -1497,26 +1496,25 @@ const PortfolioComparison = ({
                                         </td>
                                         <td>
                                           {selectedTrades[index] ? (
-                                            <>
-                                              {recalculated ? recalculated.projectedPercentage : suggestion.projectedPercentage}%
-                                              <Badge 
-                                                bg={parseFloat(recalculated ? recalculated.projectedDeviation : suggestion.projectedDeviation) > 0 ? "warning" : "info"}
-                                                className="ms-1"
-                                              >
-                                                {parseFloat(recalculated ? recalculated.projectedDeviation : suggestion.projectedDeviation) > 0 ? "+" : ""}
-                                                {recalculated ? recalculated.projectedDeviation : suggestion.projectedDeviation}%
-                                              </Badge>
-                                            </>
+                                            recalculated ? recalculated.projectedPercentage : suggestion.projectedPercentage
                                           ) : (
-                                            <>
-                                              {suggestion.currentPercentage}%
-                                              <Badge 
-                                                bg={parseFloat(suggestion.deviation) > 0 ? "warning" : "info"}
-                                                className="ms-1"
-                                              >
-                                                {suggestion.deviation}%
-                                              </Badge>
-                                            </>
+                                            suggestion.currentPercentage
+                                          )}%
+                                        </td>
+                                        <td>
+                                          {selectedTrades[index] ? (
+                                            <Badge 
+                                              bg={parseFloat(recalculated ? recalculated.projectedDeviation : suggestion.projectedDeviation) > 0 ? "warning" : "info"}
+                                            >
+                                              {parseFloat(recalculated ? recalculated.projectedDeviation : suggestion.projectedDeviation) > 0 ? "+" : ""}
+                                              {recalculated ? recalculated.projectedDeviation : suggestion.projectedDeviation}%
+                                            </Badge>
+                                          ) : (
+                                            <Badge 
+                                              bg={parseFloat(suggestion.deviation) > 0 ? "warning" : "info"}
+                                            >
+                                              {suggestion.deviation}%
+                                            </Badge>
                                           )}
                                         </td>
                                       </tr>
@@ -1538,7 +1536,7 @@ const PortfolioComparison = ({
                                         )}%
                                       </strong>
                                     </td>
-                                    <td colSpan={5}></td>
+                                    <td colSpan={6}></td>
                                   </tr>
                                 </tbody>
                               </Table>
