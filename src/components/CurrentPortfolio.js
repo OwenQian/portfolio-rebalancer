@@ -569,7 +569,18 @@ const CurrentPortfolio = ({
       {apiError && (
         <Alert variant="danger" className="mb-4">
           <Alert.Heading>Error Syncing Prices</Alert.Heading>
-          <p>{apiError}</p>
+          {apiError.includes('Failed to update prices for') ? (
+            <>
+              <p>{apiError.split(':')[0]}:</p>
+              <ul className="mb-0">
+                {apiError.split(':')[1].split(',').map((symbol, index) => (
+                  <li key={index}>{symbol.trim()}</li>
+                ))}
+              </ul>
+            </>
+          ) : (
+            <p>{apiError}</p>
+          )}
         </Alert>
       )}
 

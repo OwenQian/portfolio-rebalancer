@@ -357,7 +357,7 @@ function App() {
       recordPortfolioSnapshot(totalValue, 'sync');
 
       if (failedSymbols.length > 0) {
-        setApiError(`Failed to update prices for ${failedSymbols.length} symbols.`);
+        setApiError(`Failed to update prices for ${failedSymbols.length} symbols: ${failedSymbols.join(', ')}`);
         console.error('Failed symbols:', failedSymbols);
         alert(`Successfully updated ${successCount} symbols. ${failedSymbols.length} symbols failed to update.`);
       } else {
