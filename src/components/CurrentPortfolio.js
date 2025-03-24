@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Card, Button, Table, Form, Row, Col, Modal, Badge, Accordion, Spinner, Alert } from 'react-bootstrap';
 import { formatDollarAmount } from '../utils/formatters';
 import PortfolioValueChart from './PortfolioValueChart';
+import PriceInput from './PriceInput';
 
 const CurrentPortfolio = ({ 
   accounts, 
@@ -72,14 +73,25 @@ const CurrentPortfolio = ({
   };
 
   const handlePriceChange = (symbol, price) => {
-    if (isNaN(price) || price < 0) {
-      alert('Please enter a valid price');
+    // Allow empty input or input that could become a valid number
+    // Don't validate until complete - this allows the user to type freely
+    if (price === '' || price === '.') {
+      setTempPrices(prev => ({
+        ...prev,
+        [symbol]: price
+      }));
       return;
     }
     
+    // Only do numeric validation when we have a complete value
+    if (!/^[0-9]*\.?[0-9]*$/.test(price)) {
+      return; // Reject invalid characters but don't show alert
+    }
+    
+    // Update the price without formatting until blur event
     setTempPrices(prev => ({
       ...prev,
-      [symbol]: parseFloat(price).toFixed(2)
+      [symbol]: price
     }));
   };
 
@@ -91,7 +103,30 @@ const CurrentPortfolio = ({
   };
 
   const saveAssetSettings = () => {
-    updateStockPrices(tempPrices);
+    // Format all prices to ensure they have 2 decimal places
+    const formattedPrices = {};
+    
+    // Format each price entry to ensure it has 2 decimal places
+    Object.entries(tempPrices).forEach(([symbol, price]) => {
+      try {
+        // Handle empty or incomplete values
+        if (price === '' || price === '.') {
+          formattedPrices[symbol] = '0.00';
+        } else {
+          const numValue = parseFloat(price);
+          if (!isNaN(numValue)) {
+            formattedPrices[symbol] = numValue.toFixed(2);
+          } else {
+            formattedPrices[symbol] = '0.00';
+          }
+        }
+      } catch (e) {
+        console.error(`Error formatting price for ${symbol}:`, e);
+        formattedPrices[symbol] = '0.00';
+      }
+    });
+    
+    updateStockPrices(formattedPrices);
     setStockCategories(tempCategories);
     setEditingAssets(false);
     alert('Asset settings updated successfully');
@@ -332,17 +367,29 @@ const CurrentPortfolio = ({
       return;
     }
 
-    if (!newPrice || isNaN(parseFloat(newPrice)) || parseFloat(newPrice) <= 0) {
+    // More permissive price validation
+    if (!newPrice || newPrice === '.') {
       alert('Please enter a valid price');
       return;
     }
 
-    const price = parseFloat(newPrice).toFixed(2);
+    let formattedPrice;
+    try {
+      const numValue = parseFloat(newPrice);
+      if (isNaN(numValue) || numValue < 0) {
+        alert('Please enter a valid price');
+        return;
+      }
+      formattedPrice = numValue.toFixed(2);
+    } catch (e) {
+      alert('Please enter a valid price');
+      return;
+    }
 
     // Update temporary prices and categories
     setTempPrices(prev => ({
       ...prev,
-      [symbol]: price
+      [symbol]: formattedPrice
     }));
     
     if (newCategory) {
@@ -674,13 +721,10 @@ const CurrentPortfolio = ({
                 <Col md={3}>
                   <Form.Group className="mb-2">
                     <Form.Label>Price</Form.Label>
-                    <Form.Control
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      placeholder="e.g., 150.00"
+                    <PriceInput
                       value={newPrice}
-                      onChange={(e) => setNewPrice(e.target.value)}
+                      onChange={setNewPrice}
+                      placeholder="e.g., 150.00"
                     />
                   </Form.Group>
                 </Col>
@@ -728,12 +772,9 @@ const CurrentPortfolio = ({
                       <td>{symbol}</td>
                       <td>{formatDollarAmount(stockPrices[symbol] || '0.00')}</td>
                       <td>
-                        <Form.Control
-                          type="number"
-                          step="0.01"
-                          min="0"
+                        <PriceInput
                           value={tempPrices[symbol] || ''}
-                          onChange={(e) => handlePriceChange(symbol, e.target.value)}
+                          onChange={(value) => handlePriceChange(symbol, value)}
                           size="sm"
                         />
                       </td>
@@ -961,11 +1002,10 @@ const CurrentPortfolio = ({
             ) : (
               <Form.Group className="mb-3">
                 <Form.Label>Dollar Value</Form.Label>
-                <Form.Control
-                  type="number"
+                <PriceInput
                   placeholder="e.g., 5000"
                   value={newValue}
-                  onChange={(e) => setNewValue(e.target.value)}
+                  onChange={setNewValue}
                 />
                 {newSymbol && (
                   <Form.Text className="text-muted">
@@ -1047,14 +1087,10 @@ const CurrentPortfolio = ({
               <Col md={4}>
                 <Form.Group>
                   <Form.Label>Value ($)</Form.Label>
-                  <Form.Control 
-                    type="number" 
-                    step="0.01" 
-                    min="0" 
-                    value={newSnapshotValue} 
-                    onChange={(e) => setNewSnapshotValue(e.target.value)}
+                  <PriceInput
+                    value={newSnapshotValue}
+                    onChange={setNewSnapshotValue}
                     placeholder="Enter value"
-                    required
                   />
                 </Form.Group>
               </Col>
@@ -1105,13 +1141,9 @@ const CurrentPortfolio = ({
                           />
                         </td>
                         <td>
-                          <Form.Control 
-                            type="number" 
-                            step="0.01" 
-                            min="0" 
+                          <PriceInput 
                             value={editSnapshotValue} 
-                            onChange={(e) => setEditSnapshotValue(e.target.value)}
-                            required
+                            onChange={setEditSnapshotValue}
                             size="sm"
                           />
                         </td>
