@@ -27,7 +27,7 @@
   "scripts": {
     "start": "PORT=3001 react-scripts start",
     "build": "react-scripts build",
-    "test": "react-scripts test",
+    "test": "CI=TRUE react-scripts test",
     "eject": "react-scripts eject",
     "electron": "concurrently \"cross-env BROWSER=none PORT=3001 npm run react-start\" \"wait-on http://localhost:3001 && cross-env PORT=3001 electron .\"",
     "react-start": "react-scripts start",
