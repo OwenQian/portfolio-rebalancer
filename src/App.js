@@ -334,10 +334,7 @@ function App() {
       if (manualPrices) {
         setStockPrices(manualPrices);
         
-        // Record portfolio value after manual price update
         const totalValue = calculateTotalPortfolioValue(accounts, manualPrices);
-        recordPortfolioSnapshot(totalValue, 'manual');
-        
         return totalValue;
       }
 
@@ -432,9 +429,8 @@ function App() {
       setStockPrices(updatedPrices);
       setIsLoadingPrices(false);
 
-      // Record portfolio value after price update
+      // Calculate portfolio value but don't record a snapshot
       const totalValue = calculateTotalPortfolioValue(accounts, updatedPrices);
-      recordPortfolioSnapshot(totalValue, 'sync');
 
       if (failedSymbols.length > 0) {
         setApiError(`Failed to update prices for ${failedSymbols.length} symbols: ${failedSymbols.join(', ')}`);

@@ -1014,6 +1014,17 @@ const CurrentPortfolio = ({
           <Modal.Title>Manage Portfolio Snapshots</Modal.Title>
         </Modal.Header>
         <Modal.Body>
+          {/* Information card about snapshots */}
+          <Card className="mb-4 bg-light">
+            <Card.Body>
+              <Card.Title>About Portfolio Snapshots</Card.Title>
+              <Card.Text>
+                Snapshots record your portfolio's total value at specific points in time. They are only created manually.
+                Use snapshots to track your portfolio's performance over time.
+              </Card.Text>
+            </Card.Body>
+          </Card>
+          
           {/* Quick Snapshot button */}
           <div className="d-grid gap-2 mb-4">
             <Button 

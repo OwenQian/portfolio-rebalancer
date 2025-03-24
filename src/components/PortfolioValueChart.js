@@ -24,7 +24,7 @@ const PortfolioValueChart = ({ portfolioValueHistory }) => {
         </Card.Header>
         <Card.Body className="text-center p-4">
           <p>No portfolio value history available yet.</p>
-          <p className="text-muted small">History will be recorded each time you sync prices.</p>
+          <p className="text-muted small">Click on "Manage Snapshots" to manually record portfolio values.</p>
         </Card.Body>
       </Card>
     );
@@ -267,7 +267,7 @@ const PortfolioValueChart = ({ portfolioValueHistory }) => {
             </div>
             
             <div className="text-center text-muted mt-3 small">
-              Portfolio value is recorded when you sync prices or take manual snapshots.
+              Portfolio value is recorded when you manually take snapshots.
             </div>
           </Card.Body>
         </div>
