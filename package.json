@@ -25,12 +25,12 @@
     "web-vitals": "^2.1.4"
   },
   "scripts": {
-    "start": "react-scripts start",
+    "start": "PORT=3001 react-scripts start",
     "build": "react-scripts build",
     "test": "react-scripts test",
     "eject": "react-scripts eject",
-    "electron-dev": "concurrently \"cross-env BROWSER=none PORT=${PORT:-3000} npm start\" \"wait-on http://localhost:${PORT:-3000} && cross-env PORT=${PORT:-3000} electron .\"",
-    "electron": "electron .",
+    "electron": "concurrently \"cross-env BROWSER=none PORT=3001 npm run react-start\" \"wait-on http://localhost:3001 && cross-env PORT=3001 electron .\"",
+    "react-start": "react-scripts start",
     "package": "electron-builder build --mac --win --linux -c.extraMetadata.main=build/electron.js --publish never",
     "postinstall": "electron-builder install-app-deps"
   },

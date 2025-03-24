@@ -6,8 +6,8 @@ const { initialize, enable } = require('@electron/remote/main');
 // Initialize @electron/remote
 initialize();
 
-// Get port from environment variable or default to 3000
-const PORT = process.env.PORT || 3000;
+// Get port from environment variable or default to 3001
+const PORT = process.env.PORT || 3001;
 
 function createWindow() {
   // Create the browser window
