@@ -31,12 +31,12 @@ const CurrentPortfolio = ({
   const [newSymbol, setNewSymbol] = useState('');
   const [newShares, setNewShares] = useState('');
   const [newValue, setNewValue] = useState('');
+  const [newPrice, setNewPrice] = useState('');
   const [addPositionBy, setAddPositionBy] = useState('shares'); // 'shares' or 'value'
   const [newCategory, setNewCategory] = useState('');
   const [editingAssets, setEditingAssets] = useState(false);
   const [tempPrices, setTempPrices] = useState({...stockPrices});
   const [tempCategories, setTempCategories] = useState({...stockCategories});
-  const [newPrice, setNewPrice] = useState('');
   const [expandedAccounts, setExpandedAccounts] = useState(Array(accounts.length).fill(true).map((_, i) => i.toString()));
   const [sortedSnapshotHistory, setSortedSnapshotHistory] = useState([]);
   const [editingSnapshotIndex, setEditingSnapshotIndex] = useState(null);
@@ -68,6 +68,26 @@ const CurrentPortfolio = ({
         symbols.add(stock.symbol);
       });
     });
+    
+    // Add symbols from stockPrices and stockCategories
+    Object.keys(stockPrices).forEach(symbol => {
+      symbols.add(symbol);
+    });
+    
+    Object.keys(stockCategories).forEach(symbol => {
+      symbols.add(symbol);
+    });
+    
+    // When in editing mode, also add symbols from temporary states
+    if (editingAssets) {
+      Object.keys(tempPrices).forEach(symbol => {
+        symbols.add(symbol);
+      });
+      
+      Object.keys(tempCategories).forEach(symbol => {
+        symbols.add(symbol);
+      });
+    }
     
     return Array.from(symbols).sort();
   };
@@ -136,6 +156,69 @@ const CurrentPortfolio = ({
     setTempPrices({...stockPrices});
     setTempCategories({...stockCategories});
     setEditingAssets(false);
+  };
+
+  const getStocksInUse = () => {
+    const usedSymbols = new Set();
+    
+    // Add symbols from accounts
+    accounts.forEach(account => {
+      account.positions.forEach(position => {
+        usedSymbols.add(position.symbol);
+      });
+    });
+    
+    // Also keep symbols from model portfolios
+    modelPortfolios?.forEach(portfolio => {
+      portfolio.stocks.forEach(stock => {
+        usedSymbols.add(stock.symbol);
+      });
+    });
+    
+    return usedSymbols;
+  };
+
+  const handleCleanupUnusedStocks = () => {
+    const usedSymbols = getStocksInUse();
+    
+    // Debug: Log the symbols that are being used
+    console.log('Symbols in use:', Array.from(usedSymbols));
+    
+    // Create new objects with only the stocks that are in use
+    const cleanedPrices = {};
+    const cleanedCategories = {};
+    const removedStocks = [];
+    
+    // Only keep the stocks that are in use
+    Object.keys(stockPrices).forEach(symbol => {
+      if (usedSymbols.has(symbol)) {
+        cleanedPrices[symbol] = stockPrices[symbol];
+      } else {
+        removedStocks.push(symbol);
+      }
+    });
+    
+    Object.keys(stockCategories).forEach(symbol => {
+      if (usedSymbols.has(symbol)) {
+        cleanedCategories[symbol] = stockCategories[symbol];
+      } else if (!removedStocks.includes(symbol)) {
+        removedStocks.push(symbol);
+      }
+    });
+    
+    // Update the state
+    updateStockPrices(cleanedPrices);
+    setStockCategories(cleanedCategories);
+    
+    // Also update the temporary state used for editing
+    setTempPrices(cleanedPrices);
+    setTempCategories(cleanedCategories);
+    
+    if (removedStocks.length === 0) {
+      alert('No unused stocks found to remove.');
+    } else {
+      alert(`Removed ${removedStocks.length} unused stocks: ${removedStocks.join(', ')}`);
+    }
   };
 
   const handleSyncPrices = () => {
@@ -222,6 +305,7 @@ const CurrentPortfolio = ({
     setNewSymbol('');
     setNewShares('');
     setNewValue('');
+    setNewPrice('');
     setAddPositionBy('shares');
     setNewCategory('');
     setShowAddPositionModal(true);
@@ -262,9 +346,31 @@ const CurrentPortfolio = ({
       shares = Math.round(shares * 10000) / 10000;
     }
 
+    // Update stock price if provided
+    if (newPrice && !isNaN(parseFloat(newPrice)) && parseFloat(newPrice) > 0) {
+      const formattedPrice = parseFloat(newPrice).toFixed(2);
+      const updatedPrices = {
+        ...stockPrices,
+        [symbol]: formattedPrice
+      };
+      updateStockPrices(updatedPrices);
+      
+      // Also update temporary prices used in asset settings
+      setTempPrices({
+        ...tempPrices,
+        [symbol]: formattedPrice
+      });
+    }
+
     if (newCategory) {
-      setStockCategories({
+      // Update both the main stockCategories and the temporary one used in asset settings
+      const updatedCategories = {
         ...stockCategories,
+        [symbol]: newCategory
+      };
+      setStockCategories(updatedCategories);
+      setTempCategories({
+        ...tempCategories,
         [symbol]: newCategory
       });
     }
@@ -362,6 +468,8 @@ const CurrentPortfolio = ({
     }
 
     const symbol = newSymbol.toUpperCase();
+    
+    // Check if the stock already exists in the temp prices (which now shows all currently displayed stocks)
     if (tempPrices[symbol]) {
       alert('This stock is already in your portfolio.');
       return;
@@ -399,6 +507,10 @@ const CurrentPortfolio = ({
       }));
     }
 
+    // Provide feedback that the stock was added
+    alert(`${symbol} added to asset settings with price $${formattedPrice}. Remember to save changes.`);
+
+    // Reset form fields for next entry
     setNewSymbol('');
     setNewPrice('');
     setNewCategory('');
@@ -767,35 +879,68 @@ const CurrentPortfolio = ({
                   </tr>
                 </thead>
                 <tbody>
-                  {getAllUniqueStockSymbols().map((symbol) => (
-                    <tr key={symbol}>
-                      <td>{symbol}</td>
-                      <td>{formatDollarAmount(stockPrices[symbol] || '0.00')}</td>
-                      <td>
-                        <PriceInput
-                          value={tempPrices[symbol] || ''}
-                          onChange={(value) => handlePriceChange(symbol, value)}
-                          size="sm"
-                        />
-                      </td>
-                      <td>
-                        <Form.Select
-                          size="sm"
-                          value={tempCategories[symbol] || ''}
-                          onChange={(e) => handleCategoryChange(symbol, e.target.value)}
-                        >
-                          <option value="">Select category</option>
-                          {categories.map(category => (
-                            <option key={category.id} value={category.id}>
-                              {category.name}
-                            </option>
-                          ))}
-                        </Form.Select>
-                      </td>
-                    </tr>
-                  ))}
+                  {getAllUniqueStockSymbols().map((symbol) => {
+                    const inUse = getStocksInUse().has(symbol);
+                    return (
+                      <tr key={symbol}>
+                        <td>
+                          {symbol}
+                          {!inUse && (
+                            <Badge bg="warning" className="ms-2" style={{ fontSize: '0.7em' }}>
+                              Unused
+                            </Badge>
+                          )}
+                        </td>
+                        <td>{formatDollarAmount(stockPrices[symbol] || '0.00')}</td>
+                        <td>
+                          <PriceInput
+                            value={tempPrices[symbol] || ''}
+                            onChange={(value) => handlePriceChange(symbol, value)}
+                            size="sm"
+                          />
+                        </td>
+                        <td>
+                          <Form.Select
+                            size="sm"
+                            value={tempCategories[symbol] || ''}
+                            onChange={(e) => handleCategoryChange(symbol, e.target.value)}
+                          >
+                            <option value="">Select category</option>
+                            {categories.map(category => (
+                              <option key={category.id} value={category.id}>
+                                {category.name}
+                              </option>
+                            ))}
+                          </Form.Select>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </Table>
+            </div>
+            
+            <div className="mt-3">
+              {(() => {
+                // Count how many unused stocks there are
+                const usedSymbols = getStocksInUse();
+                const allSymbols = getAllUniqueStockSymbols();
+                const unusedCount = allSymbols.filter(symbol => !usedSymbols.has(symbol)).length;
+                
+                return (
+                  <Button 
+                    variant="outline-danger" 
+                    size="sm" 
+                    onClick={handleCleanupUnusedStocks}
+                    disabled={unusedCount === 0}
+                  >
+                    Clean Up Unused Stocks {unusedCount > 0 && `(${unusedCount})`}
+                  </Button>
+                );
+              })()}
+              <Form.Text className="text-muted d-block mt-1">
+                Removes stocks that aren't used in any account.
+              </Form.Text>
             </div>
           </Card.Body>
         </Card>
@@ -1035,6 +1180,18 @@ const CurrentPortfolio = ({
                   </option>
                 ))}
               </Form.Select>
+            </Form.Group>
+
+            <Form.Group className="mb-3">
+              <Form.Label>Price (Optional)</Form.Label>
+              <PriceInput
+                placeholder="e.g., 150.00"
+                value={newPrice}
+                onChange={setNewPrice}
+              />
+              <Form.Text className="text-muted">
+                Leave blank to keep current price: {formatDollarAmount(stockPrices[newSymbol.toUpperCase()] || '0.00')}
+              </Form.Text>
             </Form.Group>
           </Form>
         </Modal.Body>
