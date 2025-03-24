@@ -62,6 +62,32 @@ const getDataFilePath = (filename) => {
   return dataDir ? path.join(dataDir, filename) : null;
 };
 
+// Get the backups directory path and ensure it exists
+const ensureBackupsDirectoryExists = () => {
+  if (!isElectron()) {
+    return null;
+  }
+  
+  const dataDir = ensureDataDirectoryExists();
+  if (!dataDir) return null;
+  
+  const backupsDir = path.join(dataDir, 'backups');
+  if (!fs.existsSync(backupsDir)) {
+    fs.mkdirSync(backupsDir, { recursive: true });
+  }
+  return backupsDir;
+};
+
+// Get the full path to a backup file
+const getBackupFilePath = (filename) => {
+  if (!isElectron()) {
+    return null;
+  }
+  
+  const backupsDir = ensureBackupsDirectoryExists();
+  return backupsDir ? path.join(backupsDir, filename) : null;
+};
+
 /**
  * Save data to a file
  * @param {string} filename - Name of the file to save to
@@ -204,7 +230,7 @@ export const exportDataBackup = (data) => {
     try {
       const timestamp = new Date().toISOString().replace(/:/g, '-');
       const backupFilename = `portfolio-backup-${timestamp}.json`;
-      const filePath = getDataFilePath(backupFilename);
+      const filePath = getBackupFilePath(backupFilename);
       
       if (!filePath) {
         reject(new Error('Unable to determine file path'));
@@ -243,14 +269,45 @@ export const importDataBackup = (filePath) => {
     }
     
     try {
+      // Check if file exists
+      if (!fs.existsSync(filePath)) {
+        // If filepath doesn't exist as is, try checking in the backups directory
+        const backupsDir = ensureBackupsDirectoryExists();
+        const backupPath = path.join(backupsDir, path.basename(filePath));
+        
+        if (fs.existsSync(backupPath)) {
+          // Use the backup path instead
+          filePath = backupPath;
+        } else {
+          console.error(`Backup file does not exist at ${filePath} or ${backupPath}`);
+          reject(new Error('Backup file not found'));
+          return;
+        }
+      }
+      
       fs.readFile(filePath, 'utf8', (err, data) => {
         if (err) {
           console.error('Error reading backup file:', err);
           reject(err);
         } else {
           try {
-            const parsedData = JSON.parse(data);
-            resolve(parsedData);
+            const jsonData = JSON.parse(data);
+            
+            // Fix any date format issues in portfolio history
+            if (jsonData.portfolioValueHistory && Array.isArray(jsonData.portfolioValueHistory)) {
+              jsonData.portfolioValueHistory = jsonData.portfolioValueHistory.map(item => {
+                if (item.date) {
+                  const dateObj = new Date(item.date);
+                  return {
+                    ...item,
+                    date: dateObj.toISOString()
+                  };
+                }
+                return item;
+              });
+            }
+            
+            resolve(jsonData);
           } catch (parseError) {
             console.error('Error parsing backup JSON:', parseError);
             reject(parseError);

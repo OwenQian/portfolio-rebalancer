@@ -140,7 +140,25 @@ function App() {
     setStockCategories(data.stockCategories || {});
     setStockPrices(data.stockPrices || {});
     setMarketstackApiKey(data.marketstackApiKey || '');
-    setPortfolioValueHistory(data.portfolioValueHistory || []);
+    
+    // Fix dates and ensure portfolio history data is properly preserved
+    let portfolioHistory = data.portfolioValueHistory || [];
+    
+    // Ensure consistent date format and fix timezone issues (especially near year boundaries)
+    if (Array.isArray(portfolioHistory) && portfolioHistory.length > 0) {
+      portfolioHistory = portfolioHistory.map(item => {
+        // Make sure date is always stored as ISO string
+        if (item.date) {
+          const dateObj = new Date(item.date);
+          // Store the date as UTC to prevent timezone issues
+          const isoDate = dateObj.toISOString();
+          return { ...item, date: isoDate };
+        }
+        return item;
+      });
+    }
+    
+    setPortfolioValueHistory(portfolioHistory);
   }, [setModelPortfolios, setAccounts, setCategories, setStockCategories, setStockPrices, setMarketstackApiKey, setPortfolioValueHistory]);
   
   // Function to handle restore from file - wrapped in useCallback
@@ -252,11 +270,8 @@ function App() {
     localStorage.setItem('portfolioValueHistory', JSON.stringify(portfolioValueHistory));
   }, [portfolioValueHistory]);
   
-  // Save data to file when any state changes - only if file system is available
+  // Auto-save to file whenever data changes (if file system is available)
   useEffect(() => {
-    // Skip entirely if not using file storage
-    if (!isUsingFileStorage) return;
-    
     // Make sure we're in Electron
     const isElectron = window && window.process && window.process.type;
     if (!isElectron) {
@@ -268,6 +283,22 @@ function App() {
       try {
         // Only try to save if we have data
         if (accounts.length > 0 || modelPortfolios.length > 0) {
+          // Ensure portfolioValueHistory is properly normalized before saving
+          let normalizedHistory = [];
+          
+          if (Array.isArray(portfolioValueHistory) && portfolioValueHistory.length > 0) {
+            normalizedHistory = portfolioValueHistory.map(item => {
+              // Make sure date is always stored as ISO string
+              if (item.date) {
+                const dateObj = new Date(item.date);
+                // Store the date as UTC to prevent timezone issues
+                const isoDate = dateObj.toISOString();
+                return { ...item, date: isoDate };
+              }
+              return item;
+            });
+          }
+          
           const portfolioData = {
             modelPortfolios,
             accounts,
@@ -275,7 +306,7 @@ function App() {
             stockCategories,
             stockPrices,
             marketstackApiKey,
-            portfolioValueHistory
+            portfolioValueHistory: normalizedHistory
           };
           
           await saveDataToFile('portfolioData', portfolioData);
@@ -288,7 +319,7 @@ function App() {
     };
     
     saveData();
-  }, [modelPortfolios, accounts, categories, stockCategories, stockPrices, marketstackApiKey, isUsingFileStorage]);
+  }, [modelPortfolios, accounts, categories, stockCategories, stockPrices, marketstackApiKey, portfolioValueHistory, isUsingFileStorage]);
 
   // Function to update stock prices using Marketstack API
   const updateStockPrices = async (manualPrices = null, selectedSymbols = null, snapshotOnly = false, snapshotValue = null) => {
@@ -433,6 +464,22 @@ function App() {
     try {
       setBackupStatus('Creating backup...');
       
+      // Normalize portfolioValueHistory to prevent date issues
+      let normalizedHistory = [];
+      
+      if (Array.isArray(portfolioValueHistory) && portfolioValueHistory.length > 0) {
+        normalizedHistory = portfolioValueHistory.map(item => {
+          // Make sure date is always stored as ISO string
+          if (item.date) {
+            const dateObj = new Date(item.date);
+            // Store the date as UTC to prevent timezone issues
+            const isoDate = dateObj.toISOString();
+            return { ...item, date: isoDate };
+          }
+          return item;
+        });
+      }
+      
       const portfolioData = {
         modelPortfolios,
         accounts,
@@ -440,7 +487,7 @@ function App() {
         stockCategories,
         stockPrices,
         marketstackApiKey,
-        portfolioValueHistory,
+        portfolioValueHistory: normalizedHistory,
         backupDate: new Date().toISOString()
       };
       
@@ -512,26 +559,42 @@ function App() {
     input.click();
   };
   
-  // Function to handle JSON import with validation
+  // Function to handle JSON import from file
   const handleJsonImport = (jsonData, filename) => {
     try {
-      setRestoreStatus('Validating imported data...');
       const data = JSON.parse(jsonData);
+      setRestoreStatus(`Validating data from ${filename}...`);
       
-      // Validate the imported data
+      // Validate the imported data structure
       if (!validateImportedData(data)) {
-        setRestoreStatus('Invalid data format. Import failed.');
+        setRestoreStatus(`Invalid data structure in ${filename}.`);
         return;
+      }
+      
+      // Normalize the portfolio history data to handle timezone issues
+      if (data.portfolioValueHistory && Array.isArray(data.portfolioValueHistory)) {
+        data.portfolioValueHistory = data.portfolioValueHistory.map(item => {
+          if (item.date) {
+            const dateObj = new Date(item.date);
+            return {
+              ...item,
+              date: dateObj.toISOString()
+            };
+          }
+          return item;
+        });
       }
       
       // Update all state with loaded data
       importPortfolioData(data);
       
-      setRestoreStatus(`Data imported successfully from: ${filename}`);
+      setRestoreStatus(`Data successfully imported from ${filename}.`);
+      
+      // Close modal after a brief delay
       setTimeout(() => setShowRestoreModal(false), 2000);
     } catch (error) {
-      console.error('Error parsing JSON:', error);
-      setRestoreStatus(`Error parsing JSON: ${error.message}`);
+      console.error('Error parsing JSON data:', error);
+      setRestoreStatus(`Error parsing JSON data from ${filename}: ${error.message}`);
     }
   };
   
@@ -857,9 +920,14 @@ function App() {
     setPortfolioValueHistory(prev => {
       // Ensure prev is an array
       const prevHistory = Array.isArray(prev) ? prev : [];
+      
+      // Create date in ISO format with consistent UTC timezone to avoid boundary issues
+      const now = new Date();
+      const isoDate = now.toISOString();
+      
       return [
         ...prevHistory,
-        { date: new Date().toISOString(), value, type }
+        { date: isoDate, value, type }
       ];
     });
     return value;

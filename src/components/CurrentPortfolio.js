@@ -390,17 +390,27 @@ const CurrentPortfolio = ({
     }
 
     const value = parseFloat(editSnapshotValue).toFixed(2);
-    const date = new Date(editSnapshotDate).toISOString();
+    
+    // Handle date with care to prevent timezone issues
+    const inputDate = new Date(editSnapshotDate);
+    // Convert to UTC ISO string to ensure consistent timezone handling
+    const date = inputDate.toISOString();
     
     // Get the record to edit from sorted history
     const recordToEdit = sortedSnapshotHistory[editingSnapshotIndex];
     
-    // Find its actual index in the portfolio value history
-    const actualIndex = portfolioValueHistory.findIndex(
-      record => record.date === recordToEdit.date && 
-                record.value === recordToEdit.value && 
-                record.type === recordToEdit.type
-    );
+    // Use a more robust method to find the entry - match by approximate time and value
+    // This avoids issues where exact date string equality might fail due to timezone or formatting differences
+    const actualIndex = portfolioValueHistory.findIndex(record => {
+      // Match by approximate time (within 1 second) and exact value and type
+      const recordDate = new Date(record.date).getTime();
+      const editDate = new Date(recordToEdit.date).getTime();
+      const timeDiff = Math.abs(recordDate - editDate);
+      
+      return timeDiff < 1000 && // Within 1 second
+             record.value === recordToEdit.value && 
+             record.type === recordToEdit.type;
+    });
     
     if (actualIndex !== -1) {
       // Create an updated copy of the history
@@ -414,6 +424,18 @@ const CurrentPortfolio = ({
       
       // Update the state which will trigger useEffect to update sortedSnapshotHistory
       setPortfolioValueHistory(updatedHistory);
+      
+      // Exit edit mode
+      setEditingSnapshotIndex(null);
+    } else {
+      // If we couldn't find the exact record, add a new one
+      // This is a fallback to prevent data loss
+      alert('Could not find the original snapshot record. Adding as a new snapshot instead.');
+      
+      setPortfolioValueHistory([
+        ...portfolioValueHistory,
+        { date, value, type: 'snapshot' }
+      ]);
       
       // Exit edit mode
       setEditingSnapshotIndex(null);
@@ -440,7 +462,11 @@ const CurrentPortfolio = ({
     }
 
     const value = parseFloat(newSnapshotValue).toFixed(2);
-    const date = new Date(newSnapshotDate).toISOString();
+    
+    // Handle date with care to prevent timezone issues
+    const inputDate = new Date(newSnapshotDate);
+    // Convert to UTC ISO string to ensure consistent timezone handling
+    const date = inputDate.toISOString();
     
     // Ensure portfolioValueHistory is an array before updating
     const currentHistory = Array.isArray(portfolioValueHistory) ? portfolioValueHistory : [];
@@ -468,17 +494,24 @@ const CurrentPortfolio = ({
       // Get the record to delete from sorted history
       const recordToDelete = sortedSnapshotHistory[index];
       
-      // Find its actual index in the portfolio value history
-      const actualIndex = portfolioValueHistory.findIndex(
-        record => record.date === recordToDelete.date && 
-                 record.value === recordToDelete.value && 
-                 record.type === recordToDelete.type
-      );
+      // Use the same robust matching method as in handleSaveEditedSnapshot
+      const actualIndex = portfolioValueHistory.findIndex(record => {
+        // Match by approximate time (within 1 second) and exact value and type
+        const recordDate = new Date(record.date).getTime();
+        const deleteDate = new Date(recordToDelete.date).getTime();
+        const timeDiff = Math.abs(recordDate - deleteDate);
+        
+        return timeDiff < 1000 && // Within 1 second
+               record.value === recordToDelete.value && 
+               record.type === recordToDelete.type;
+      });
       
       if (actualIndex !== -1) {
         const updatedHistory = [...portfolioValueHistory];
         updatedHistory.splice(actualIndex, 1);
         setPortfolioValueHistory(updatedHistory);
+      } else {
+        alert('Could not find the snapshot to delete. Please try again.');
       }
     }
   };
@@ -529,10 +562,14 @@ const CurrentPortfolio = ({
     // Ensure portfolioValueHistory is an array before updating
     const currentHistory = Array.isArray(portfolioValueHistory) ? portfolioValueHistory : [];
     
+    // Create date in UTC ISO format with consistent timezone to avoid boundary issues
+    const now = new Date();
+    const isoDate = now.toISOString();
+    
     // Record the snapshot
     setPortfolioValueHistory([
       ...currentHistory,
-      { date: new Date().toISOString(), value: totalValue, type: 'snapshot' }
+      { date: isoDate, value: totalValue, type: 'snapshot' }
     ]);
     
     alert(`Portfolio snapshot recorded: ${formatDollarAmount(totalValue)}`);
