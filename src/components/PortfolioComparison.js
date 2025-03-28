@@ -67,6 +67,7 @@ const PortfolioComparison = ({
   const [showCsvModal, setShowCsvModal] = useState(false);
   const [jsonExportData, setJsonExportData] = useState(null);
   const [csvExportData, setCsvExportData] = useState(null);
+  const [csvExportMode, setCsvExportMode] = useState("general"); // <-- Add state for export mode
 
   // Generate random colors for categories
   const generateColors = (count) => {
@@ -369,11 +370,25 @@ const PortfolioComparison = ({
               );
               if (sharesToSell > 0) {
                 const actualSoldValue = sharesToSell * positionToSell.price;
+
+                // --- START: Find account with most shares of this symbol ---
+                let accountNameWithMostShares = "N/A";
+                let maxSharesInAccount = 0;
+                accounts.forEach(account => {
+                  const positionInAccount = account.positions.find(p => p.symbol === positionToSell.symbol);
+                  if (positionInAccount && positionInAccount.shares > maxSharesInAccount) {
+                    maxSharesInAccount = positionInAccount.shares;
+                    accountNameWithMostShares = account.name;
+                  }
+                });
+                // --- END: Find account with most shares of this symbol ---
+
                 suggestions.push({
                   category: categoryName,
                   action: `SELL ${positionToSell.symbol}`,
                   percent: deviation.toFixed(2), // This percent is for the category deviation
                   amount: actualSoldValue,
+                  account: accountNameWithMostShares, // <-- Add account name
                 });
                 amountSold += actualSoldValue;
               }
@@ -418,6 +433,7 @@ const PortfolioComparison = ({
                   action: `BUY ${positionToBuy.symbol}`,
                   percent: Math.abs(deviation).toFixed(2),
                   amount: actualBuyValue,
+                  account: "-", // <-- Add placeholder for consistency
                 });
                 amountBought += actualBuyValue;
                 // Since we bought the target amount (or close to it), break for this category
@@ -449,6 +465,7 @@ const PortfolioComparison = ({
                   action: `BUY ${recommendedStock.symbol}`,
                   percent: Math.abs(deviation).toFixed(2),
                   amount: sharesToBuy * price,
+                  account: "-", // <-- Add placeholder for consistency
                 });
                 amountBought += sharesToBuy * price;
               }
@@ -1445,10 +1462,10 @@ const PortfolioComparison = ({
 
   const prepareCsvExport = () => {
     let csvContent = "";
-    let exportMode = "general"; // Default
+    let currentExportMode = "general"; // Use a local variable within the function
 
     if (showBuyOnlyRebalancing && recalculatedSuggestions.length > 0) {
-      exportMode = "buyOnly";
+      currentExportMode = "buyOnly";
       // For buy-only mode, use the selected/recalculated suggestions
       const headers = [
         "Symbol",
@@ -1497,7 +1514,7 @@ const PortfolioComparison = ({
 
       csvContent = csvRows.join("\n");
     } else if (showSellBuyRebalancing && rebalanceActions.length > 0) {
-      exportMode = "sellBuy";
+      currentExportMode = "sellBuy";
       // For sell-buy rebalancing mode, use the rebalanceActions
       const suggestions = rebalanceActions;
 
@@ -1511,6 +1528,9 @@ const PortfolioComparison = ({
         const categoryId = stockCategories[symbol] || "uncategorized";
         const categoryName =
           categories.find((c) => c.id === categoryId)?.name || "Uncategorized";
+        // --- START: Get account name (use '-' if it's a BUY action) ---
+        const accountName = suggestion.action.startsWith("SELL") ? suggestion.account : "-";
+        // --- END: Get account name ---
 
         return {
           symbol,
@@ -1518,6 +1538,7 @@ const PortfolioComparison = ({
           action: suggestion.action,
           shares,
           amount: suggestion.amount,
+          account: accountName, // <-- Add account name here
           currentCategoryPercentage: (
             currentAllocation[categoryId] || 0
           ).toFixed(2),
@@ -1544,6 +1565,7 @@ const PortfolioComparison = ({
         "Action",
         "Shares",
         "Amount",
+        "Account", // <-- Add Account header
         "Current Category %",
         "Target Category %",
         "Deviation",
@@ -1560,6 +1582,7 @@ const PortfolioComparison = ({
             `"${suggestion.action}"`,
             suggestion.shares,
             parseFloat(suggestion.amount).toFixed(2),
+            `"${suggestion.account}"`, // <-- Add Account value
             `${suggestion.currentCategoryPercentage}%`,
             `${suggestion.targetCategoryPercentage}%`,
             `${suggestion.deviation}%`,
@@ -1583,7 +1606,7 @@ const PortfolioComparison = ({
       csvContent = csvRows.join("\n");
     } else if (showWhatIfAnalysis) { // <-- START: Add What-If condition
         if (whatIfTrades.length > 0) {
-            exportMode = "whatIf";
+            currentExportMode = "whatIf";
             const csvRows = [];
 
             // Section 1: Simulated Trades
@@ -1643,7 +1666,7 @@ const PortfolioComparison = ({
       // Default: Export specific stock suggestions if no mode is active or suggestions exist
       const specificSuggestions = memoizedGenerateSpecificSuggestions();
       if (specificSuggestions.length > 0) {
-        exportMode = "specific";
+        currentExportMode = "specific";
         const headers = [
           "Symbol",
           "Category",
@@ -1679,6 +1702,7 @@ const PortfolioComparison = ({
     }
 
     setCsvExportData(csvContent);
+    setCsvExportMode(currentExportMode); // <-- Set the state variable
     setShowCsvModal(true);
   };
 
@@ -1701,6 +1725,8 @@ const PortfolioComparison = ({
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
     setShowCsvModal(false);
+    // Optional: Reset mode after download if desired, though closing modal handles it too
+    // setCsvExportMode("general");
   };
 
   // Chart options
@@ -2166,6 +2192,7 @@ const PortfolioComparison = ({
                                     <th>Action</th>
                                     <th>Shares</th>
                                     <th>Amount</th>
+                                    <th>Account</th> {/* <-- Add Header */}
                                     {/* <th>Category Deviation</th> */}
                                   </tr>
                                 </thead>
@@ -2194,6 +2221,12 @@ const PortfolioComparison = ({
                                         <td>
                                           ${formatNumber(suggestion.amount)}
                                         </td>
+                                        {/* <-- Add Cell --> */}
+                                        <td>
+                                          {suggestion.action.startsWith("SELL")
+                                            ? suggestion.account
+                                            : "-"}
+                                        </td>
                                         {/* <td>{suggestion.percent}%</td> */}
                                       </tr>
                                     );
@@ -2203,7 +2236,7 @@ const PortfolioComparison = ({
                                     <td colSpan={2}>
                                       <strong>Total Sell Value</strong>
                                     </td>
-                                    <td colSpan={2} className="text-end">
+                                    <td colSpan={3} className="text-end"> {/* <-- Updated colSpan */}
                                       {" "}
                                       {/* Align right */}
                                       <strong>
@@ -2225,7 +2258,7 @@ const PortfolioComparison = ({
                                     <td colSpan={2}>
                                       <strong>Total Buy Value</strong>
                                     </td>
-                                    <td colSpan={2} className="text-end">
+                                    <td colSpan={3} className="text-end"> {/* <-- Updated colSpan */}
                                       {" "}
                                       {/* Align right */}
                                       <strong>
@@ -3036,7 +3069,10 @@ const PortfolioComparison = ({
       {/* CSV Export Modal */}
       <Modal
         show={showCsvModal}
-        onHide={() => setShowCsvModal(false)}
+        onHide={() => {
+            setShowCsvModal(false);
+            setCsvExportMode("general"); // <-- Reset mode on hide
+        }}
         size="lg"
       >
         <Modal.Header closeButton>
@@ -3059,10 +3095,16 @@ const PortfolioComparison = ({
                         // Basic unquoting: remove leading/trailing double quotes
                         const cellContent = cell.replace(/^"(.*)"$/, '$1');
                         // Use <th> for the first row (header)
-                        return rowIndex === 0 ? (
+                        const isHeader = rowIndex === 0;
+                        // --- START: Use csvExportMode state variable ---
+                        const isAccountColumn = cellIndex === 5 && csvExportMode === 'sellBuy'; // Use state variable
+                        // --- END: Use csvExportMode state variable ---
+                        return isHeader ? (
                           <th key={cellIndex}>{cellContent}</th>
                         ) : (
-                          <td key={cellIndex}>{cellContent}</td>
+                          <td key={cellIndex} style={isAccountColumn ? { whiteSpace: 'normal', wordBreak: 'break-word' } : {}}>
+                            {cellContent}
+                          </td>
                         );
                       })}
                     </tr>
@@ -3075,7 +3117,10 @@ const PortfolioComparison = ({
           </div>
         </Modal.Body>
         <Modal.Footer>
-          <Button variant="secondary" onClick={() => setShowCsvModal(false)}>
+          <Button variant="secondary" onClick={() => {
+              setShowCsvModal(false);
+              setCsvExportMode("general"); // <-- Reset mode on close button
+          }}>
             Close
           </Button>
           <Button
