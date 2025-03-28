@@ -1,20 +1,31 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { Card, Table, Row, Col, Form, Button, Alert, Badge, InputGroup, Modal } from 'react-bootstrap';
-import { Pie } from 'react-chartjs-2';
-import { Chart as ChartJS, ArcElement, Tooltip, Legend } from 'chart.js';
-import { formatDollarAmount, formatNumber } from '../utils/formatters';
+import React, { useState, useEffect, useCallback } from "react";
+import {
+  Card,
+  Table,
+  Row,
+  Col,
+  Form,
+  Button,
+  Alert,
+  Badge,
+  InputGroup,
+  Modal,
+} from "react-bootstrap";
+import { Pie } from "react-chartjs-2";
+import { Chart as ChartJS, ArcElement, Tooltip, Legend } from "chart.js";
+import { formatDollarAmount, formatNumber } from "../utils/formatters";
 
 // Register ChartJS components
 ChartJS.register(ArcElement, Tooltip, Legend);
 
-const PortfolioComparison = ({ 
-  modelPortfolios, 
-  accounts, 
-  categories, 
-  stockCategories, 
-  stockPrices 
+const PortfolioComparison = ({
+  modelPortfolios,
+  accounts,
+  categories,
+  stockCategories,
+  stockPrices,
 }) => {
-  const [selectedModelPortfolio, setSelectedModelPortfolio] = useState('');
+  const [selectedModelPortfolio, setSelectedModelPortfolio] = useState("");
   const [modelAllocation, setModelAllocation] = useState({});
   const [currentAllocation, setCurrentAllocation] = useState({});
   const [simulatedAllocation, setSimulatedAllocation] = useState({});
@@ -22,31 +33,34 @@ const PortfolioComparison = ({
   const [simulatedDeviations, setSimulatedDeviations] = useState({});
   const [rebalanceActions, setRebalanceActions] = useState([]);
   const [totalPortfolioValue, setTotalPortfolioValue] = useState(0);
-  const [specificRebalancingSuggestions, setSpecificRebalancingSuggestions] = useState([]);
+  const [specificRebalancingSuggestions, setSpecificRebalancingSuggestions] =
+    useState([]);
   const [showSpecificSuggestions] = useState(false);
-  
+
   // What-if analysis states
   const [showWhatIfAnalysis, setShowWhatIfAnalysis] = useState(false);
-  const [whatIfCategory, setWhatIfCategory] = useState('');
-  const [whatIfAction, setWhatIfAction] = useState('buy');
-  const [whatIfAmount, setWhatIfAmount] = useState('');
+  const [whatIfCategory, setWhatIfCategory] = useState("");
+  const [whatIfAction, setWhatIfAction] = useState("buy");
+  const [whatIfAmount, setWhatIfAmount] = useState("");
   const [whatIfDirty, setWhatIfDirty] = useState(false);
   const [whatIfTrades, setWhatIfTrades] = useState([]);
   const [currentTrade, setCurrentTrade] = useState({
-    category: '',
-    action: 'buy',
-    amount: ''
+    category: "",
+    action: "buy",
+    amount: "",
   });
 
   // Sell-Buy rebalancing state
   const [showSellBuyRebalancing, setShowSellBuyRebalancing] = useState(false);
-  
+
   // Buy-only rebalancing states
   const [showBuyOnlyRebalancing, setShowBuyOnlyRebalancing] = useState(false);
-  const [newInvestmentAmount, setNewInvestmentAmount] = useState('');
+  const [newInvestmentAmount, setNewInvestmentAmount] = useState("");
   const [buyOnlySuggestions, setBuyOnlySuggestions] = useState([]);
   const [selectedTrades, setSelectedTrades] = useState({});
   const [recalculatedSuggestions, setRecalculatedSuggestions] = useState([]);
+  const [buyOnlyUnallocatedAmount, setBuyOnlyUnallocatedAmount] = useState(0); // <-- Added state
+  const [isCalculatingNeeded, setIsCalculatingNeeded] = useState(false); // <-- Added state
 
   // Add these state variables near the top with other states
   const [showJsonModal, setShowJsonModal] = useState(false);
@@ -65,37 +79,44 @@ const PortfolioComparison = ({
   };
 
   // Calculate model portfolio allocation by category
-  const calculateModelAllocation = useCallback((portfolioId) => {
-    if (!portfolioId) return {};
+  const calculateModelAllocation = useCallback(
+    (portfolioId) => {
+      if (!portfolioId) return {};
 
-    const selectedPortfolio = modelPortfolios.find(p => p.name === portfolioId);
-    if (!selectedPortfolio) return {};
+      const selectedPortfolio = modelPortfolios.find(
+        (p) => p.name === portfolioId
+      );
+      if (!selectedPortfolio) return {};
 
-    const allocation = {};
-    let totalPercentage = 0;
+      const allocation = {};
+      let totalPercentage = 0;
 
-    // Initialize categories
-    categories.forEach(category => {
-      allocation[category.id] = 0;
-    });
-    allocation['uncategorized'] = 0;
-
-    // Calculate allocations by category
-    selectedPortfolio.stocks.forEach(stock => {
-      const categoryId = stockCategories[stock.symbol] || 'uncategorized';
-      allocation[categoryId] = (allocation[categoryId] || 0) + stock.percentage;
-      totalPercentage += stock.percentage;
-    });
-
-    // Normalize to 100% if needed
-    if (totalPercentage > 0 && Math.abs(totalPercentage - 100) > 0.01) {
-      Object.keys(allocation).forEach(categoryId => {
-        allocation[categoryId] = (allocation[categoryId] / totalPercentage) * 100;
+      // Initialize categories
+      categories.forEach((category) => {
+        allocation[category.id] = 0;
       });
-    }
+      allocation["uncategorized"] = 0;
 
-    return allocation;
-  }, [categories, modelPortfolios, stockCategories]);
+      // Calculate allocations by category
+      selectedPortfolio.stocks.forEach((stock) => {
+        const categoryId = stockCategories[stock.symbol] || "uncategorized";
+        allocation[categoryId] =
+          (allocation[categoryId] || 0) + stock.percentage;
+        totalPercentage += stock.percentage;
+      });
+
+      // Normalize to 100% if needed
+      if (totalPercentage > 0 && Math.abs(totalPercentage - 100) > 0.01) {
+        Object.keys(allocation).forEach((categoryId) => {
+          allocation[categoryId] =
+            (allocation[categoryId] / totalPercentage) * 100;
+        });
+      }
+
+      return allocation;
+    },
+    [categories, modelPortfolios, stockCategories]
+  );
 
   // Calculate current portfolio allocation by category
   const calculateCurrentAllocation = useCallback(() => {
@@ -103,26 +124,26 @@ const PortfolioComparison = ({
     let totalValue = 0;
 
     // Initialize categories
-    categories.forEach(category => {
+    categories.forEach((category) => {
       allocation[category.id] = 0;
     });
-    allocation['uncategorized'] = 0;
+    allocation["uncategorized"] = 0;
 
     // Calculate values by category
-    accounts.forEach(account => {
-      account.positions.forEach(position => {
+    accounts.forEach((account) => {
+      account.positions.forEach((position) => {
         const price = stockPrices[position.symbol] || 0;
         const value = price * position.shares;
         totalValue += value;
 
-        const categoryId = stockCategories[position.symbol] || 'uncategorized';
+        const categoryId = stockCategories[position.symbol] || "uncategorized";
         allocation[categoryId] = (allocation[categoryId] || 0) + value;
       });
     });
 
     // Convert to percentages
     if (totalValue > 0) {
-      Object.keys(allocation).forEach(categoryId => {
+      Object.keys(allocation).forEach((categoryId) => {
         allocation[categoryId] = (allocation[categoryId] / totalValue) * 100;
       });
     }
@@ -132,21 +153,29 @@ const PortfolioComparison = ({
 
     return allocation;
   }, [accounts, categories, stockCategories, stockPrices]);
-  
+
   // Calculate deviations between model and current allocations
-  const calculateDeviations = useCallback((model, current) => {
-    const deviations = {};
-    
-    categories.forEach(category => {
-      const modelAlloc = model[category.id] || 0;
-      const currentAlloc = current[category.id] || 0;
-      deviations[category.id] = currentAlloc - modelAlloc;
-    });
-    
-    deviations['uncategorized'] = (current['uncategorized'] || 0) - (model['uncategorized'] || 0);
-    
-    return deviations;
-  }, [categories]);
+  const calculateDeviations = useCallback(
+    (model, current) => {
+      const deviations = {};
+
+      const allCategoryIds = new Set([
+        ...categories.map((c) => c.id),
+        "uncategorized",
+        ...Object.keys(model),
+        ...Object.keys(current),
+      ]);
+
+      allCategoryIds.forEach((categoryId) => {
+        const modelAlloc = model[categoryId] || 0;
+        const currentAlloc = current[categoryId] || 0;
+        deviations[categoryId] = currentAlloc - modelAlloc;
+      });
+
+      return deviations;
+    },
+    [categories]
+  );
 
   // Simulate allocation changes based on multiple trades
   const simulateAllocationChange = useCallback(() => {
@@ -156,63 +185,74 @@ const PortfolioComparison = ({
       setSimulatedDeviations(deviations);
       return;
     }
-    
+
     // Create a copy of the current allocation values (not percentages)
     const categoryValues = {};
     let newTotalValue = totalPortfolioValue;
-    
+
     // Convert percentages to dollar values
-    Object.keys(currentAllocation).forEach(categoryId => {
-      categoryValues[categoryId] = (currentAllocation[categoryId] / 100) * totalPortfolioValue;
+    Object.keys(currentAllocation).forEach((categoryId) => {
+      categoryValues[categoryId] =
+        (currentAllocation[categoryId] / 100) * totalPortfolioValue;
     });
-    
+
     // Apply all trades
-    whatIfTrades.forEach(trade => {
+    whatIfTrades.forEach((trade) => {
       const amount = parseFloat(trade.amount);
-      if (!trade.category || !trade.amount || isNaN(amount) || amount <= 0) return;
-      
-      const isBuying = trade.action === 'buy';
-      
+      if (!trade.category || !trade.amount || isNaN(amount) || amount <= 0)
+        return;
+
+      const isBuying = trade.action === "buy";
+
       if (isBuying) {
-        categoryValues[trade.category] = (categoryValues[trade.category] || 0) + amount;
+        categoryValues[trade.category] =
+          (categoryValues[trade.category] || 0) + amount;
         newTotalValue += amount;
       } else {
         // Selling - make sure we don't sell more than we have
-        const currentCategoryValue = (currentAllocation[trade.category] / 100) * totalPortfolioValue;
-        if (amount > currentCategoryValue) {
+        const currentCategoryValue = categoryValues[trade.category] || 0; // Use the value, not percentage calculation
+        if (amount >= currentCategoryValue) {
           // Can't sell more than what exists in the category
-          categoryValues[trade.category] = 0;
           newTotalValue -= currentCategoryValue;
+          categoryValues[trade.category] = 0;
         } else {
           categoryValues[trade.category] = currentCategoryValue - amount;
           newTotalValue -= amount;
         }
       }
     });
-    
+
     // Calculate new percentages based on new total value
     const newAllocation = {};
     if (newTotalValue > 0) {
-      Object.keys(categoryValues).forEach(categoryId => {
-        newAllocation[categoryId] = (categoryValues[categoryId] / newTotalValue) * 100;
+      Object.keys(categoryValues).forEach((categoryId) => {
+        newAllocation[categoryId] =
+          (categoryValues[categoryId] / newTotalValue) * 100;
       });
     }
-    
+
     // Calculate new deviations
     const newDeviations = calculateDeviations(modelAllocation, newAllocation);
-    
+
     setSimulatedAllocation(newAllocation);
     setSimulatedDeviations(newDeviations);
     setWhatIfDirty(true);
-  }, [whatIfTrades, currentAllocation, deviations, calculateDeviations, modelAllocation, totalPortfolioValue]);
+  }, [
+    whatIfTrades,
+    currentAllocation,
+    deviations,
+    calculateDeviations,
+    modelAllocation,
+    totalPortfolioValue,
+  ]);
 
   // Reset simulation to current allocation
   const resetSimulation = useCallback(() => {
     setWhatIfTrades([]);
     setCurrentTrade({
-      category: '',
-      action: 'buy',
-      amount: ''
+      category: "",
+      action: "buy",
+      amount: "",
     });
     setSimulatedAllocation(currentAllocation);
     setSimulatedDeviations(deviations);
@@ -224,9 +264,9 @@ const PortfolioComparison = ({
     if (currentTrade.category && currentTrade.amount) {
       setWhatIfTrades([...whatIfTrades, { ...currentTrade }]);
       setCurrentTrade({
-        category: '',
-        action: 'buy',
-        amount: ''
+        category: "",
+        action: "buy",
+        amount: "",
       });
     }
   };
@@ -239,9 +279,9 @@ const PortfolioComparison = ({
 
   // Quick add amount to current trade
   const quickAddAmount = (amount) => {
-    setCurrentTrade(prev => ({
+    setCurrentTrade((prev) => ({
       ...prev,
-      amount: (parseFloat(prev.amount) || 0) + amount
+      amount: (parseFloat(prev.amount) || 0) + amount,
     }));
   };
 
@@ -255,29 +295,31 @@ const PortfolioComparison = ({
   // Generate rebalance suggestions
   const generateRebalanceSuggestions = () => {
     if (!selectedModelPortfolio) return [];
-    
+
     const totalValue = totalPortfolioValue;
     const suggestions = [];
-    
+
     // Get the selected model portfolio object
-    const modelPortfolioObj = modelPortfolios.find(p => p.name === selectedModelPortfolio);
+    const modelPortfolioObj = modelPortfolios.find(
+      (p) => p.name === selectedModelPortfolio
+    );
     if (!modelPortfolioObj) return [];
-    
+
     // Calculate current positions by symbol across all accounts
     const symbolTotals = {};
-    accounts.forEach(account => {
-      account.positions.forEach(position => {
+    accounts.forEach((account) => {
+      account.positions.forEach((position) => {
         const symbol = position.symbol;
         const price = stockPrices[symbol] || 0;
         const value = position.shares * price;
-        
+
         if (!symbolTotals[symbol]) {
           symbolTotals[symbol] = {
             symbol,
             shares: position.shares,
             value,
             price,
-            category: stockCategories[symbol] || 'uncategorized'
+            category: stockCategories[symbol] || "uncategorized",
           };
         } else {
           symbolTotals[symbol].value += value;
@@ -285,483 +327,533 @@ const PortfolioComparison = ({
         }
       });
     });
-    
+
     // Group symbols by category for decision making
     const categorizedSymbols = {};
-    Object.values(symbolTotals).forEach(item => {
+    Object.values(symbolTotals).forEach((item) => {
       if (!categorizedSymbols[item.category]) {
         categorizedSymbols[item.category] = [];
       }
       categorizedSymbols[item.category].push(item);
     });
-    
+
     // Sort each category's symbols by value (ascending for selling, descending for buying)
-    Object.keys(categorizedSymbols).forEach(category => {
+    Object.keys(categorizedSymbols).forEach((category) => {
       categorizedSymbols[category].sort((a, b) => a.value - b.value); // Ascending for selling lowest value first
     });
-    
+
     // First handle all sells (overweight positions)
-    Object.keys(deviations).forEach(categoryId => {
+    Object.keys(deviations).forEach((categoryId) => {
       const deviation = deviations[categoryId];
-      if (deviation > 0.5) { // Only sell if meaningfully overweight
-        const amount = (deviation / 100) * totalValue;
-        const categoryName = categories.find(c => c.id === categoryId)?.name || 'Uncategorized';
-        
-        if (categorizedSymbols[categoryId] && categorizedSymbols[categoryId].length > 0) {
-          const positionToSell = categorizedSymbols[categoryId][0]; // Smallest position first
-          const sharesToSell = Math.floor(amount / positionToSell.price);
-          
-          if (sharesToSell > 0) {
-            suggestions.push({
-              category: categoryName,
-              action: `SELL ${positionToSell.symbol}`,
-              percent: deviation.toFixed(2),
-              amount: sharesToSell * positionToSell.price
-            });
-          }
-        }
-      }
-    });
-    
-    // Then handle all buys (underweight positions)
-    Object.keys(deviations).forEach(categoryId => {
-      const deviation = deviations[categoryId];
-      if (deviation < -0.5) { // Only buy if meaningfully underweight
-        const amount = (Math.abs(deviation) / 100) * totalValue;
-        const categoryName = categories.find(c => c.id === categoryId)?.name || 'Uncategorized';
-        
-        // Find positions that already exist in this category (if any)
-        if (categorizedSymbols[categoryId] && categorizedSymbols[categoryId].length > 0) {
-          // Sort in descending order for buying (largest position first)
-          const buyPositions = [...categorizedSymbols[categoryId]].sort((a, b) => b.value - a.value);
-          const positionToBuy = buyPositions[0]; // Largest position first
-          const sharesToBuy = Math.floor(amount / positionToBuy.price);
-          
-          if (sharesToBuy > 0) {
-            suggestions.push({
-              category: categoryName,
-              action: `BUY ${positionToBuy.symbol}`,
-              percent: Math.abs(deviation).toFixed(2),
-              amount: sharesToBuy * positionToBuy.price
-            });
-          }
-        } else {
-          // If no positions exist in this category, look for stocks in model portfolio
-          const modelStocksInCategory = modelPortfolioObj.stocks.filter(
-            stock => stockCategories[stock.symbol] === categoryId
-          );
-          
-          if (modelStocksInCategory.length > 0) {
-            // Sort by percentage allocation in model (descending)
-            modelStocksInCategory.sort((a, b) => b.percentage - a.percentage);
-            const recommendedStock = modelStocksInCategory[0];
-            const price = stockPrices[recommendedStock.symbol] || 0;
-            
-            if (price > 0) {
-              const sharesToBuy = Math.floor(amount / price);
-              if (sharesToBuy > 0) {
+      if (deviation > 0.5) {
+        // Only sell if meaningfully overweight
+        const amountToAdjust = (deviation / 100) * totalValue;
+        const categoryName =
+          categories.find((c) => c.id === categoryId)?.name || "Uncategorized";
+
+        if (
+          categorizedSymbols[categoryId] &&
+          categorizedSymbols[categoryId].length > 0
+        ) {
+          // Try to sell smallest positions first to reach the target reduction
+          let amountSold = 0;
+          for (const positionToSell of categorizedSymbols[categoryId]) {
+            if (amountSold >= amountToAdjust) break;
+            const sellAmountForThis = Math.min(
+              positionToSell.value,
+              amountToAdjust - amountSold
+            );
+            if (sellAmountForThis > 0 && positionToSell.price > 0) {
+              const sharesToSell = Math.floor(
+                sellAmountForThis / positionToSell.price
+              );
+              if (sharesToSell > 0) {
+                const actualSoldValue = sharesToSell * positionToSell.price;
                 suggestions.push({
                   category: categoryName,
-                  action: `BUY ${recommendedStock.symbol}`,
-                  percent: Math.abs(deviation).toFixed(2),
-                  amount: sharesToBuy * price
+                  action: `SELL ${positionToSell.symbol}`,
+                  percent: deviation.toFixed(2), // This percent is for the category deviation
+                  amount: actualSoldValue,
                 });
+                amountSold += actualSoldValue;
               }
             }
           }
         }
       }
     });
-    
+
+    // Then handle all buys (underweight positions)
+    Object.keys(deviations).forEach((categoryId) => {
+      const deviation = deviations[categoryId];
+      if (deviation < -0.5) {
+        // Only buy if meaningfully underweight
+        const amountToAdjust = (Math.abs(deviation) / 100) * totalValue;
+        const categoryName =
+          categories.find((c) => c.id === categoryId)?.name || "Uncategorized";
+        let amountBought = 0;
+
+        // Find positions that already exist in this category (if any)
+        if (
+          categorizedSymbols[categoryId] &&
+          categorizedSymbols[categoryId].length > 0
+        ) {
+          // Sort in descending order for buying (largest position first)
+          const buyPositions = [...categorizedSymbols[categoryId]].sort(
+            (a, b) => b.value - a.value
+          );
+
+          for (const positionToBuy of buyPositions) {
+            if (amountBought >= amountToAdjust) break;
+            // Allocate proportionally or just to the largest? Let's try largest first.
+            const buyAmountForThis = amountToAdjust - amountBought; // Try to buy the remaining amount needed
+            if (buyAmountForThis > 0 && positionToBuy.price > 0) {
+              const sharesToBuy = Math.floor(
+                buyAmountForThis / positionToBuy.price
+              );
+              if (sharesToBuy > 0) {
+                const actualBuyValue = sharesToBuy * positionToBuy.price;
+                suggestions.push({
+                  category: categoryName,
+                  action: `BUY ${positionToBuy.symbol}`,
+                  percent: Math.abs(deviation).toFixed(2),
+                  amount: actualBuyValue,
+                });
+                amountBought += actualBuyValue;
+                // Since we bought the target amount (or close to it), break for this category
+                break;
+              }
+            }
+          }
+        }
+
+        // If not enough bought (or no existing position), look for model stocks
+        if (amountBought < amountToAdjust - 1) {
+          // Allow small tolerance
+          const modelStocksInCategory = modelPortfolioObj.stocks.filter(
+            (stock) => stockCategories[stock.symbol] === categoryId
+          );
+
+          if (modelStocksInCategory.length > 0) {
+            // Sort by percentage allocation in model (descending)
+            modelStocksInCategory.sort((a, b) => b.percentage - a.percentage);
+            const recommendedStock = modelStocksInCategory[0]; // Buy the highest % model stock
+            const price = stockPrices[recommendedStock.symbol] || 0;
+            const amountToBuy = amountToAdjust - amountBought;
+
+            if (price > 0 && amountToBuy > 0) {
+              const sharesToBuy = Math.floor(amountToBuy / price);
+              if (sharesToBuy > 0) {
+                suggestions.push({
+                  category: categoryName,
+                  action: `BUY ${recommendedStock.symbol}`,
+                  percent: Math.abs(deviation).toFixed(2),
+                  amount: sharesToBuy * price,
+                });
+                amountBought += sharesToBuy * price;
+              }
+            }
+          }
+        }
+      }
+    });
+
     return suggestions;
   };
 
-  // Generate specific stock-level rebalancing suggestions
+  // Generate specific stock-level rebalancing suggestions (Corrected .toFixed call)
   const generateSpecificSuggestions = useCallback(() => {
+    // --- Start of function is the same ---
     if (!selectedModelPortfolio || totalPortfolioValue <= 0) return [];
-    
-    const selectedPortfolio = modelPortfolios.find(p => p.name === selectedModelPortfolio);
+    const selectedPortfolio = modelPortfolios.find(
+      (p) => p.name === selectedModelPortfolio
+    );
     if (!selectedPortfolio) return [];
-    
     const suggestions = [];
-    const modelStocks = new Map(selectedPortfolio.stocks.map(stock => [stock.symbol, stock.percentage]));
-    
-    // Get current portfolio stock values
+    const modelStocks = new Map(
+      selectedPortfolio.stocks.map((stock) => [stock.symbol, stock.percentage])
+    );
     const currentStockValues = {};
     let currentTotalValue = 0;
-    
-    accounts.forEach(account => {
-      account.positions.forEach(position => {
+    accounts.forEach((account) => {
+      /* ... aggregate current stock values ... */
+      account.positions.forEach((position) => {
         const price = stockPrices[position.symbol] || 0;
         const value = price * position.shares;
-        
         if (currentStockValues[position.symbol]) {
           currentStockValues[position.symbol].value += value;
           currentStockValues[position.symbol].shares += position.shares;
         } else {
-          currentStockValues[position.symbol] = { 
-            value, 
+          currentStockValues[position.symbol] = {
+            symbol: position.symbol,
+            value,
             shares: position.shares,
-            price
+            price: price,
+            category: stockCategories[position.symbol] || "uncategorized",
           };
         }
-        
+        // Use the latest price if > 0? Or first price? Let's use latest valid price.
+        if (price > 0) currentStockValues[position.symbol].price = price;
         currentTotalValue += value;
       });
     });
-    
+
     // Stocks to sell (reduce)
-    Object.entries(currentStockValues).forEach(([symbol, data]) => {
+    Object.values(currentStockValues).forEach((data) => {
+      const symbol = data.symbol;
       const modelPercentage = modelStocks.get(symbol) || 0;
-      const currentPercentage = (data.value / currentTotalValue) * 100;
-      
-      if (currentPercentage > modelPercentage + 1) {
-        // Overweight - need to reduce
+      const currentPercentage =
+        currentTotalValue > 0 ? (data.value / currentTotalValue) * 100 : 0;
+      // Ensure price is a valid number
+      const price =
+        typeof data.price === "number" && data.price > 0 ? data.price : 0;
+
+      if (currentPercentage > modelPercentage + 1 && price > 0) {
         const targetValue = (modelPercentage / 100) * currentTotalValue;
         const excessValue = data.value - targetValue;
-        const sharesToSell = Math.floor(excessValue / data.price);
-        
+        const sharesToSell = Math.floor(excessValue / price);
+
         if (sharesToSell > 0) {
+          const sellValue = sharesToSell * price; // Calculate value first
+          // ***** START CORRECTION *****
+          const formattedSellValue = !isNaN(sellValue)
+            ? sellValue.toFixed(2)
+            : "0.00"; // Format safely
+          // ***** END CORRECTION *****
+
           suggestions.push({
             symbol,
-            action: 'Sell',
+            action: "Sell",
             shares: sharesToSell,
-            value: (sharesToSell * data.price).toFixed(2),
-            category: categories.find(cat => cat.id === stockCategories[symbol])?.name || 'Uncategorized',
+            value: formattedSellValue, // Use formatted value
+            category:
+              categories.find((cat) => cat.id === data.category)?.name ||
+              "Uncategorized",
             currentPercentage: currentPercentage.toFixed(2),
             targetPercentage: modelPercentage.toFixed(2),
-            deviation: (currentPercentage - modelPercentage).toFixed(2)
+            deviation: (currentPercentage - modelPercentage).toFixed(2),
           });
         }
       }
     });
-    
+
     // Stocks to buy (increase) or add
-    selectedPortfolio.stocks.forEach(modelStock => {
+    selectedPortfolio.stocks.forEach((modelStock) => {
       const { symbol, percentage } = modelStock;
       const currentData = currentStockValues[symbol];
-      
+      // Ensure price is a valid number
+      const price =
+        typeof currentData?.price === "number" && currentData.price > 0
+          ? currentData.price
+          : typeof stockPrices[symbol] === "number" && stockPrices[symbol] > 0
+          ? stockPrices[symbol]
+          : 0;
+      const categoryId = stockCategories[symbol] || "uncategorized";
+
       const targetValue = (percentage / 100) * currentTotalValue;
       const currentValue = currentData?.value || 0;
-      
-      if (targetValue > currentValue + 100) { // Only suggest if difference is significant
-        const additionalValue = targetValue - currentValue;
-        const price = currentData?.price || stockPrices[symbol] || 0;
-        
-        if (price > 0) {
-          const sharesToBuy = Math.floor(additionalValue / price);
-          
-          if (sharesToBuy > 0) {
-            const currentPercentage = currentValue > 0 ? (currentValue / currentTotalValue) * 100 : 0;
-            
-            suggestions.push({
-              symbol,
-              action: 'Buy',
-              shares: sharesToBuy,
-              value: (sharesToBuy * price).toFixed(2),
-              category: categories.find(cat => cat.id === stockCategories[symbol])?.name || 'Uncategorized',
-              currentPercentage: currentPercentage.toFixed(2),
-              targetPercentage: percentage.toFixed(2),
-              deviation: (currentPercentage - percentage).toFixed(2)
-            });
-          }
-        }
-      }
-    });
-    
-    // Sort by action (buys first) then by value (highest first)
-    return suggestions.sort((a, b) => {
-      if (a.action !== b.action) {
-        return a.action === 'Buy' ? -1 : 1;
-      }
-      return parseFloat(b.value) - parseFloat(a.value);
-    });
-  }, [accounts, categories, modelPortfolios, selectedModelPortfolio, stockCategories, stockPrices, totalPortfolioValue, calculateDeviations]);
+      const currentPercentage =
+        currentTotalValue > 0 ? (currentValue / currentTotalValue) * 100 : 0;
 
-  // Generate buy-only rebalancing suggestions
-  const generateBuyOnlySuggestions = useCallback((investmentAmount) => {
-    if (!selectedModelPortfolio || totalPortfolioValue <= 0 || !investmentAmount) return [];
-    
-    const amount = parseFloat(investmentAmount);
-    if (isNaN(amount) || amount <= 0) return [];
-    
-    const selectedPortfolio = modelPortfolios.find(p => p.name === selectedModelPortfolio);
-    if (!selectedPortfolio) return [];
-    
-    const suggestions = [];
-    const futureTotalValue = totalPortfolioValue + amount;
-    
-    // Get current portfolio stock values and percentages
-    const currentStockValues = {};
-    
-    accounts.forEach(account => {
-      account.positions.forEach(position => {
-        const price = stockPrices[position.symbol] || 0;
-        const value = price * position.shares;
-        
-        if (currentStockValues[position.symbol]) {
-          currentStockValues[position.symbol].value += value;
-          currentStockValues[position.symbol].shares += position.shares;
-        } else {
-          currentStockValues[position.symbol] = { 
-            value, 
-            shares: position.shares,
-            price,
-            percentage: (value / totalPortfolioValue) * 100,
-            category: stockCategories[position.symbol] || 'uncategorized'
-          };
-        }
-      });
-    });
-    
-    // First, check which categories are underweight
-    const underweightCategories = [];
-    categories.forEach(category => {
-      const modelAlloc = modelAllocation[category.id] || 0;
-      const currentAlloc = currentAllocation[category.id] || 0;
-      const deviation = currentAlloc - modelAlloc;
-      
-      if (deviation < -0.5) { // More than 0.5% underweight
-        underweightCategories.push({
-          id: category.id,
-          name: category.name,
-          modelAllocation: modelAlloc,
-          currentAllocation: currentAlloc,
-          deviation,
-          shortfall: ((modelAlloc / 100) * futureTotalValue) - ((currentAlloc / 100) * totalPortfolioValue)
-        });
-      }
-    });
-    
-    // Check uncategorized
-    const uncategorizedModelAlloc = modelAllocation['uncategorized'] || 0;
-    const uncategorizedCurrentAlloc = currentAllocation['uncategorized'] || 0;
-    const uncategorizedDeviation = uncategorizedCurrentAlloc - uncategorizedModelAlloc;
-    
-    if (uncategorizedDeviation < -0.5) {
-      underweightCategories.push({
-        id: 'uncategorized',
-        name: 'Uncategorized',
-        modelAllocation: uncategorizedModelAlloc,
-        currentAllocation: uncategorizedCurrentAlloc,
-        deviation: uncategorizedDeviation,
-        shortfall: ((uncategorizedModelAlloc / 100) * futureTotalValue) - ((uncategorizedCurrentAlloc / 100) * totalPortfolioValue)
-      });
-    }
-    
-    // If no categories are underweight, return empty results
-    if (underweightCategories.length === 0) {
-      return {suggestions: [], projections: null};
-    }
-    
-    // Calculate total shortfall across all underweight categories
-    const totalCategoryShortfall = underweightCategories.reduce((sum, cat) => sum + cat.shortfall, 0);
-    
-    // Allocate investment amount across underweight categories
-    const categoryAllocations = {};
-    underweightCategories.forEach(category => {
-      const allocationWeight = category.shortfall / totalCategoryShortfall;
-      categoryAllocations[category.id] = allocationWeight * amount;
-    });
-    
-    // Create a sorted array of underweight positions, but only in underweight categories
-    const underweightPositions = [];
-    
-    selectedPortfolio.stocks.forEach(modelStock => {
-      const { symbol, percentage } = modelStock;
-      const categoryId = stockCategories[symbol] || 'uncategorized';
-      
-      // Only consider stocks in underweight categories
-      if (!categoryAllocations[categoryId]) return;
-      
-      const currentData = currentStockValues[symbol] || { 
-        value: 0, 
-        shares: 0, 
-        price: stockPrices[symbol] || 0, 
-        percentage: 0,
-        category: categoryId
-      };
-      
-      // Skip if price is unknown or zero
-      if (currentData.price <= 0) return;
-      
-      // Calculate the target value based on future total portfolio value
-      const targetFutureValue = (percentage / 100) * futureTotalValue;
-      const currentDeviation = currentData.percentage - percentage;
-      
-      // Include positions from underweight categories
-      underweightPositions.push({
-        symbol,
-        currentValue: currentData.value,
-        targetFutureValue,
-        shortfall: targetFutureValue - currentData.value,
-        price: currentData.price,
-        deviation: currentDeviation,
-        modelPercentage: percentage,
-        currentPercentage: currentData.percentage,
-        category: categoryId
-      });
-    });
-    
-    // Sort by highest deviation within each category (most underweight first)
-    underweightPositions.sort((a, b) => a.deviation - b.deviation);
-    
-    // Project future allocations after buy-only rebalancing
-    const projectedStockValues = {};
-    Object.keys(currentStockValues).forEach(symbol => {
-      projectedStockValues[symbol] = {...currentStockValues[symbol]};
-    });
-    
-    // Distribute the investment amount by category
-    const remainingCategoryAmount = {...categoryAllocations};
-    
-    // Process each category separately
-    Object.entries(categoryAllocations).forEach(([categoryId, categoryAmount]) => {
-      // Filter positions for this category
-      const categoryPositions = underweightPositions.filter(p => p.category === categoryId);
-      
-      if (categoryPositions.length === 0) return;
-      
-      // Calculate total shortfall for this category
-      const totalPositionShortfall = categoryPositions.reduce((sum, pos) => sum + pos.shortfall, 0);
-      
-      // Distribute investment for this category
-      let remainingAmount = categoryAmount;
-      
-      categoryPositions.forEach(position => {
-        // Calculate allocation based on proportional shortfall within the category
-        const allocationWeight = position.shortfall / totalPositionShortfall;
-        let allocationAmount = Math.min(allocationWeight * categoryAmount, position.shortfall, remainingAmount);
-        
-        // Round down to nearest whole share
-        const sharesToBuy = Math.floor(allocationAmount / position.price);
-        const actualAmount = sharesToBuy * position.price;
-        
-        if (sharesToBuy > 0 && actualAmount > 0) {
-          remainingAmount -= actualAmount;
-          remainingCategoryAmount[categoryId] -= actualAmount;
-          
-          // Update projected stock values
-          if (projectedStockValues[position.symbol]) {
-            projectedStockValues[position.symbol].value += actualAmount;
-            projectedStockValues[position.symbol].shares += sharesToBuy;
-          } else {
-            projectedStockValues[position.symbol] = {
-              value: actualAmount,
-              shares: sharesToBuy,
-              price: position.price,
-              percentage: 0, // Will calculate after all purchases
-              category: position.category
-            };
-          }
-          
-          // Add to suggestions
-          const categoryName = categories.find(c => c.id === position.category)?.name || 'Uncategorized';
-          
+      if (
+        targetValue > currentValue + 100 &&
+        currentPercentage < percentage - 1 &&
+        price > 0
+      ) {
+        const additionalValue = targetValue - currentValue;
+        const sharesToBuy = Math.floor(additionalValue / price);
+
+        if (sharesToBuy > 0) {
+          const buyValue = sharesToBuy * price; // Calculate value first
+          // ***** START CORRECTION *****
+          const formattedBuyValue = !isNaN(buyValue)
+            ? buyValue.toFixed(2)
+            : "0.00"; // Format safely
+          // ***** END CORRECTION *****
+
           suggestions.push({
-            symbol: position.symbol,
+            symbol,
+            action: "Buy",
             shares: sharesToBuy,
-            value: actualAmount.toFixed(2),
-            price: String(position.price),
-            category: categoryName,
-            currentPercentage: position.currentPercentage.toFixed(2),
-            targetPercentage: position.modelPercentage.toFixed(2),
-            deviation: position.deviation.toFixed(2),
-            allocationPercent: ((actualAmount / amount) * 100).toFixed(1),
-            categoryId: position.category
+            value: formattedBuyValue, // Use formatted value
+            category:
+              categories.find((cat) => cat.id === categoryId)?.name ||
+              "Uncategorized",
+            currentPercentage: currentPercentage.toFixed(2),
+            targetPercentage: percentage.toFixed(2),
+            deviation: (currentPercentage - percentage).toFixed(2),
           });
         }
-      });
-      
-      // If there's still money left in this category, allocate to the most underweight position
-      if (remainingAmount > 50 && categoryPositions.length > 0) {
-        const mostUnderweight = categoryPositions[0];
-        const additionalShares = Math.floor(remainingAmount / mostUnderweight.price);
-        
-        if (additionalShares > 0) {
-          const actualAmount = additionalShares * mostUnderweight.price;
-          const categoryName = categories.find(c => c.id === mostUnderweight.category)?.name || 'Uncategorized';
-          
-          // Update projected stock values
-          if (projectedStockValues[mostUnderweight.symbol]) {
-            projectedStockValues[mostUnderweight.symbol].value += actualAmount;
-            projectedStockValues[mostUnderweight.symbol].shares += additionalShares;
-          } else {
-            projectedStockValues[mostUnderweight.symbol] = {
-              value: actualAmount,
-              shares: additionalShares,
-              price: mostUnderweight.price,
-              percentage: 0, // Will calculate after all purchases
-              category: mostUnderweight.category
-            };
-          }
-          
-          const existingSuggestion = suggestions.find(s => s.symbol === mostUnderweight.symbol);
-          
-          if (existingSuggestion) {
-            // Update existing suggestion
-            existingSuggestion.shares += additionalShares;
-            const newValue = parseFloat(existingSuggestion.value) + actualAmount;
-            existingSuggestion.value = newValue.toFixed(2);
-            existingSuggestion.allocationPercent = ((newValue / amount) * 100).toFixed(1);
-          } else {
-            // Create new suggestion
-            suggestions.push({
-              symbol: mostUnderweight.symbol,
-              shares: additionalShares,
-              value: actualAmount.toFixed(2),
-              price: String(mostUnderweight.price),
-              category: categoryName,
-              currentPercentage: mostUnderweight.currentPercentage.toFixed(2),
-              targetPercentage: mostUnderweight.modelPercentage.toFixed(2),
-              deviation: mostUnderweight.deviation.toFixed(2),
-              allocationPercent: ((actualAmount / amount) * 100).toFixed(1),
-              categoryId: mostUnderweight.category
-            });
-          }
-          
-          // Update remaining amounts
-          remainingAmount -= actualAmount;
-          remainingCategoryAmount[categoryId] -= actualAmount;
+      }
+    });
+
+    // Sort...
+    return suggestions.sort((a, b) => {
+      /* ... sorting ... */
+      if (a.action !== b.action) {
+        return a.action === "Buy" ? -1 : 1;
+      }
+      return (
+        Math.abs(parseFloat(b.deviation)) - Math.abs(parseFloat(a.deviation))
+      );
+    });
+  }, [
+    accounts,
+    categories,
+    modelPortfolios,
+    selectedModelPortfolio,
+    stockCategories,
+    stockPrices,
+    totalPortfolioValue,
+  ]);
+
+  // Generate buy-only rebalancing suggestions (IMPROVED ALLOCATION LOOP)
+  const generateBuyOnlySuggestions = useCallback((investmentAmount) => {
+    console.log("--- generateBuyOnlySuggestions START ---");
+    console.log("Input Amount:", investmentAmount);
+    console.log("Total Portfolio Value:", totalPortfolioValue);
+
+    // --- Initial Checks (same as before) ---
+    if (!selectedModelPortfolio || totalPortfolioValue <= 0 || !investmentAmount) { /* ... */ return { suggestions: [], projections: null, unallocatedAmount: parseFloat(investmentAmount) || 0 }; }
+    const amount = parseFloat(investmentAmount);
+    if (isNaN(amount) || amount <= 0) { /* ... */ return { suggestions: [], projections: null, unallocatedAmount: amount || 0 }; }
+    const selectedPortfolio = modelPortfolios.find(p => p.name === selectedModelPortfolio);
+    if (!selectedPortfolio) { /* ... */ return { suggestions: [], projections: null, unallocatedAmount: amount }; }
+
+    // --- Setup (same as before) ---
+    let remainingInvestment = amount;
+    let currentTotalValueDynamic = totalPortfolioValue;
+    const currentCategoryValues = {};
+    const allCatIds = new Set([...Object.keys(currentAllocation || {}), ...Object.keys(modelAllocation || {})]);
+    allCatIds.forEach(catId => { currentCategoryValues[catId] = ((currentAllocation[catId] || 0) / 100) * totalPortfolioValue; });
+    const currentStockValues = {};
+    accounts.forEach(account => { /* ... aggregate stock values with parseFloat ... */
+        account.positions.forEach(position => {
+            const symbol = position.symbol;
+            const rawPrice = stockPrices[symbol];
+            const parsedPrice = parseFloat(rawPrice);
+            const isValidPrice = !isNaN(parsedPrice) && parsedPrice > 0;
+             //if (!isValidPrice) console.warn(`[BuyOnly] Price issue for existing stock: ${symbol} (Raw: ${rawPrice})`);
+            const value = isValidPrice ? parsedPrice * position.shares : 0;
+            const categoryId = stockCategories[symbol] || 'uncategorized';
+            if (!currentStockValues[symbol]) { currentStockValues[symbol] = { value: 0, shares: 0, price: isValidPrice ? parsedPrice : 0, category: categoryId, symbol: symbol }; }
+            currentStockValues[symbol].value += value;
+            currentStockValues[symbol].shares += position.shares;
+            if (currentStockValues[symbol].price <= 0 && isValidPrice) { currentStockValues[symbol].price = parsedPrice; }
+        });
+     });
+    Object.values(currentStockValues).forEach(stock => { stock.percentage = totalPortfolioValue > 0 ? (stock.value / totalPortfolioValue) * 100 : 0; });
+    const projectedCategoryValues = { ...currentCategoryValues };
+    const buyCandidates = [];
+    const modelStocksMap = new Map(selectedPortfolio.stocks.map(s => [s.symbol, s]));
+
+    // --- Candidate Generation (same as before, using parsed prices) ---
+    console.log("[BuyOnly] Generating candidates...");
+    Object.values(currentStockValues).forEach(stockData => { /* ... add existing ... */
+        const modelStock = modelStocksMap.get(stockData.symbol);
+        const stockPrice = stockData.price;
+        const isValidStockPrice = stockPrice > 0;
+        if (modelStock && isValidStockPrice) {
+            const categoryId = stockData.category;
+            const currentCatAlloc = currentAllocation[categoryId] || 0;
+            const targetCatAlloc = modelAllocation[categoryId] || 0;
+            const isUnderweight = currentCatAlloc < targetCatAlloc - 0.1;
+             // console.log(`[BuyOnly Cand-Existing] ${stockData.symbol}...`);
+            if (isUnderweight) { buyCandidates.push({ symbol: stockData.symbol, price: stockPrice, categoryId: categoryId, modelStockPercentage: modelStock.percentage, modelCategoryPercentage: targetCatAlloc }); }
         }
-      }
-    });
-    
-    // Calculate projected percentages after purchases
-    Object.keys(projectedStockValues).forEach(symbol => {
-      projectedStockValues[symbol].percentage = (projectedStockValues[symbol].value / futureTotalValue) * 100;
-    });
-    
-    // Add projected allocation data to each suggestion
-    suggestions.forEach(suggestion => {
-      const symbol = suggestion.symbol;
-      if (projectedStockValues[symbol]) {
-        suggestion.projectedPercentage = projectedStockValues[symbol].percentage.toFixed(2);
-        suggestion.projectedDeviation = (projectedStockValues[symbol].percentage - parseFloat(suggestion.targetPercentage)).toFixed(2);
-      }
-    });
-    
-    // Add the projected allocation by category
-    const projectedCategoryAllocation = {};
-    categories.forEach(category => {
-      projectedCategoryAllocation[category.id] = 0;
-    });
-    projectedCategoryAllocation['uncategorized'] = 0;
-    
-    Object.entries(projectedStockValues).forEach(([symbol, data]) => {
-      const categoryId = data.category || stockCategories[symbol] || 'uncategorized';
-      projectedCategoryAllocation[categoryId] = (projectedCategoryAllocation[categoryId] || 0) + data.percentage;
-    });
-    
-    // Store this for display in a separate state variable
-    const projectionsData = {
-      categoryAllocation: projectedCategoryAllocation,
-      deviations: calculateDeviations(modelAllocation, projectedCategoryAllocation),
-      totalValue: futureTotalValue
-    };
-    
-    // Return both suggestions and projected allocations
-    return {suggestions, projections: projectionsData};
+     });
+    selectedPortfolio.stocks.forEach(stock => { /* ... add new ... */
+        if (!currentStockValues[stock.symbol]) {
+             const rawPrice = stockPrices[stock.symbol];
+             const parsedPrice = parseFloat(rawPrice);
+             const isValidPrice = !isNaN(parsedPrice) && parsedPrice > 0;
+             if (isValidPrice) {
+                const categoryId = stockCategories[stock.symbol] || 'uncategorized';
+                const currentCatAlloc = currentAllocation[categoryId] || 0;
+                const targetCatAlloc = modelAllocation[categoryId] || 0;
+                const isUnderweight = currentCatAlloc < targetCatAlloc - 0.1;
+                // console.log(`[BuyOnly Cand-New] ${stock.symbol}...`);
+                 if (isUnderweight) { buyCandidates.push({ symbol: stock.symbol, price: parsedPrice, categoryId: categoryId, modelStockPercentage: stock.percentage, modelCategoryPercentage: targetCatAlloc }); }
+             }
+        }
+     });
+    let uniqueCandidates = Array.from(new Map(buyCandidates.map(c => [c.symbol, c])).values());
+    console.log(`[BuyOnly] Found ${uniqueCandidates.length} unique candidates.`);
+    if (uniqueCandidates.length === 0) console.error("[BuyOnly Error] No valid buy candidates found.");
+
+    // --- Allocation Loop (REVISED LOGIC) ---
+    const allocationResults = {};
+    let iteration = 0;
+    // Increase MAX_ITERATIONS slightly, but it should finish much faster now
+    const MAX_ITERATIONS = uniqueCandidates.length * 5 + 20; // e.g., 4*5+20 = 40
+    let safetyBreak = false;
+
+    console.log("[BuyOnly] --- Starting Efficient Allocation Loop ---");
+    while (remainingInvestment > 1 && uniqueCandidates.length > 0 && iteration < MAX_ITERATIONS) {
+        iteration++;
+        let allocatedInLoop = false;
+
+        // 1. Sort candidates to find the highest priority
+         uniqueCandidates.sort((a, b) => { /* ... same sorting logic ... */
+             const currentTotalVal = currentTotalValueDynamic > 0 ? currentTotalValueDynamic : 1;
+             const catDevA = ((projectedCategoryValues[a.categoryId]||0) / currentTotalVal * 100) - a.modelCategoryPercentage;
+             const catDevB = ((projectedCategoryValues[b.categoryId]||0) / currentTotalVal * 100) - b.modelCategoryPercentage;
+             if (Math.abs(catDevA - catDevB) > 0.01) { return catDevA - catDevB; }
+             const currentProjValA = (currentStockValues[a.symbol]?.value || 0) + (allocationResults[a.symbol]?.value || 0);
+             const currentProjValB = (currentStockValues[b.symbol]?.value || 0) + (allocationResults[b.symbol]?.value || 0);
+             const stockPercentageA = currentTotalVal > 0 ? (currentProjValA / currentTotalVal * 100) : 0;
+             const stockPercentageB = currentTotalVal > 0 ? (currentProjValB / currentTotalVal * 100) : 0;
+             const stockDevA = stockPercentageA - a.modelStockPercentage;
+             const stockDevB = stockPercentageB - b.modelStockPercentage;
+             return stockDevA - stockDevB;
+         });
+
+         // 2. Process the highest priority candidate
+         const candidate = uniqueCandidates[0];
+         const { symbol, price, categoryId, modelCategoryPercentage } = candidate;
+
+         // Basic validity check
+         if (price <= 0) {
+             console.log(`[BuyOnly Loop ${iteration}] Removing candidate ${symbol} due to invalid price ${price}.`);
+             uniqueCandidates.shift(); // Remove invalid candidate
+             continue; // Try next iteration
+         }
+         if (remainingInvestment < price) {
+              console.log(`[BuyOnly Loop ${iteration}] Not enough remaining funds (${remainingInvestment.toFixed(2)}) to buy ${symbol} at ${price.toFixed(2)}. Exiting loop.`);
+              break; // Can't afford top candidate, likely done
+         }
+
+         // 3. Calculate Category Headroom
+         const projectedCatValue = projectedCategoryValues[categoryId] || 0;
+         const targetRatio = modelCategoryPercentage / 100;
+         let maxInvestmentInCategory = Infinity; // Max amount $ to add to category
+         if (targetRatio < 0.9999) {
+             // Formula: x = (Target% * TotalValue - CurrentCatValue) / (1 - Target%)
+             maxInvestmentInCategory = (targetRatio * currentTotalValueDynamic - projectedCatValue) / (1 - targetRatio);
+             maxInvestmentInCategory = Math.max(0, maxInvestmentInCategory); // Ensure non-negative
+         } else {
+            // Handle 100% target - essentially infinite headroom if not already there
+            maxInvestmentInCategory = Math.max(0, amount); // Limited by total investment theoretically
+         }
+
+         console.log(`[BuyOnly Loop ${iteration}] Checking ${symbol} ($${price.toFixed(2)}). Cat ${categoryId} Headroom: ~$${maxInvestmentInCategory.toFixed(2)}. Remaining Funds: $${remainingInvestment.toFixed(2)}.`);
+
+         // Check if category is already full (headroom is negligible)
+         if (maxInvestmentInCategory < 0.01) {
+             console.log(`[BuyOnly Loop ${iteration}] Category ${categoryId} is full. Removing candidate ${symbol}.`);
+             uniqueCandidates.shift(); // Remove this candidate
+             continue; // Go to next iteration with remaining candidates
+         }
+
+         // 4. Calculate max shares to buy
+         const maxAffordableShares = Math.floor(remainingInvestment / price);
+         const maxSharesForCategory = Math.floor(maxInvestmentInCategory / price);
+
+         // Number of shares is limited by funds and category room
+         let sharesToBuy = Math.min(maxAffordableShares, maxSharesForCategory);
+
+         // Ensure we buy at least one share if possible
+         if (sharesToBuy <= 0 && remainingInvestment >= price && maxInvestmentInCategory >= price) {
+             sharesToBuy = 1; // Force at least one if affordable and headroom exists
+         }
+
+         console.log(`[BuyOnly Loop ${iteration}] Max Shares: Affordable=${maxAffordableShares}, CategoryLimit=${maxSharesForCategory}. Actual Shares to Buy = ${sharesToBuy}`);
+
+         // 5. Perform the buy if possible
+         if (sharesToBuy > 0) {
+             const investmentThisStep = sharesToBuy * price;
+
+             // Final check: Ensure this doesn't push category % over target (using calculated values)
+             // This check is somewhat redundant given maxSharesForCategory, but good safety
+             const valueAfterBuy = projectedCatValue + investmentThisStep;
+             const totalAfterBuy = currentTotalValueDynamic + investmentThisStep;
+             const percentAfterBuy = totalAfterBuy > 0 ? (valueAfterBuy / totalAfterBuy) * 100 : 0;
+
+             if (percentAfterBuy <= modelCategoryPercentage + 0.1) { // Allow slightly larger tolerance for multi-share buys
+                 console.log(`[BuyOnly Loop ${iteration}] ---> YES: Buying ${sharesToBuy} shares of ${symbol} for $${investmentThisStep.toFixed(2)}.`);
+
+                 // Update totals
+                 projectedCategoryValues[categoryId] = valueAfterBuy;
+                 currentTotalValueDynamic = totalAfterBuy;
+                 remainingInvestment -= investmentThisStep;
+
+                 // Record purchase
+                 if (!allocationResults[symbol]) {
+                     allocationResults[symbol] = { shares: 0, value: 0, categoryId: categoryId, price: price };
+                 }
+                 allocationResults[symbol].shares += sharesToBuy;
+                 allocationResults[symbol].value += investmentThisStep;
+
+                 allocatedInLoop = true;
+                 // Don't break loop, let while loop condition handle next iteration (re-sort needed)
+             } else {
+                 console.log(`[BuyOnly Loop ${iteration}] ---> NO ${symbol}: Buying ${sharesToBuy} shares would exceed category limit (${percentAfterBuy.toFixed(2)}% > ${modelCategoryPercentage}%). Removing candidate.`);
+                 // If buying multiple shares failed, buying 1 might also fail, or might be inefficient.
+                 // Remove the candidate for this run to avoid infinite loops on edge cases.
+                  uniqueCandidates.shift();
+             }
+
+         } else {
+            // Can't buy any shares of the top candidate (either too expensive, no room, or no remaining funds)
+            console.log(`[BuyOnly Loop ${iteration}] Cannot buy any shares of ${symbol}. Removing candidate.`);
+            uniqueCandidates.shift(); // Remove candidate and try the next one in the next iteration
+         }
+
+    } // End while loop
+
+    console.log("[BuyOnly] --- Efficient Allocation Loop END ---");
+    if (iteration >= MAX_ITERATIONS) { console.warn("[BuyOnly] Efficient Allocation loop reached max iterations."); safetyBreak = true; }
+    if (uniqueCandidates.length == 0 && remainingInvestment > 1) { console.log("[BuyOnly] Ran out of candidates with funds remaining."); }
+
+
+    // --- Format Suggestions (same as before) ---
+    console.log("[BuyOnly] Formatting final suggestions...");
+     const finalSuggestions = Object.entries(allocationResults).map(([symbol, data]) => {
+         const categoryName = categories.find(c => c.id === data.categoryId)?.name || 'Uncategorized';
+         const modelStockInfo = modelStocksMap.get(symbol);
+         const currentStockData = currentStockValues[symbol];
+         const currentStockPercent = currentStockData ? currentStockData.percentage : 0;
+         const targetStockPercent = modelStockInfo ? modelStockInfo.percentage : 0;
+         const numericValue = data.value;
+         const formattedValue = !isNaN(numericValue) ? numericValue.toFixed(2) : '0.00';
+         const numericPrice = data.price;
+         return {
+             symbol: symbol, shares: data.shares, value: formattedValue, price: String(numericPrice), category: categoryName, categoryId: data.categoryId,
+             currentPercentage: currentStockPercent.toFixed(2), targetPercentage: targetStockPercent.toFixed(2), deviation: (currentStockPercent - targetStockPercent).toFixed(2),
+             allocationPercent: amount > 0 && !isNaN(numericValue) ? ((numericValue / amount) * 100).toFixed(1) : '0.0',
+         };
+     });
+
+
+    // --- Final Projections (same as before) ---
+     const projectedCategoryAllocation = {};
+     const allProjCatIds = new Set([...categories.map(c => c.id), 'uncategorized', ...Object.keys(projectedCategoryValues)]);
+     allProjCatIds.forEach(catId => {
+         projectedCategoryAllocation[catId] = 0;
+         if (currentTotalValueDynamic > 0) { projectedCategoryAllocation[catId] = ((projectedCategoryValues[catId] || 0) / currentTotalValueDynamic) * 100; }
+     });
+     finalSuggestions.forEach(suggestion => {
+       const currentStockValue = currentStockValues[suggestion.symbol]?.value || 0;
+       const suggestionValueNum = parseFloat(suggestion.value);
+       const finalStockValue = currentStockValue + (isNaN(suggestionValueNum) ? 0 : suggestionValueNum);
+       const finalStockPercent = currentTotalValueDynamic > 0 ? (finalStockValue / currentTotalValueDynamic) * 100 : 0;
+       suggestion.projectedPercentage = finalStockPercent.toFixed(2);
+       const targetPercNum = parseFloat(suggestion.targetPercentage);
+       suggestion.projectedDeviation = (!isNaN(targetPercNum) ? (finalStockPercent - targetPercNum) : finalStockPercent).toFixed(2);
+     });
+     const projectionsData = {
+         categoryAllocation: projectedCategoryAllocation,
+         deviations: calculateDeviations(modelAllocation, projectedCategoryAllocation),
+         totalValue: currentTotalValueDynamic,
+     };
+     finalSuggestions.sort((a, b) => parseFloat(b.value) - parseFloat(a.value));
+
+     console.log(`[BuyOnly] Generated ${finalSuggestions.length} suggestions.`);
+     console.log(`[BuyOnly] Final Unallocated Amount: ${remainingInvestment.toFixed(2)}`);
+     console.log("--- generateBuyOnlySuggestions END ---");
+     const finalUnallocated = Math.max(0, remainingInvestment);
+     return { suggestions: finalSuggestions, projections: projectionsData, unallocatedAmount: finalUnallocated };
+
   }, [accounts, categories, currentAllocation, modelAllocation, modelPortfolios, selectedModelPortfolio, stockCategories, stockPrices, totalPortfolioValue, calculateDeviations]);
 
   // Update calculations when model portfolio selection changes
@@ -769,439 +861,479 @@ const PortfolioComparison = ({
     if (selectedModelPortfolio) {
       const model = calculateModelAllocation(selectedModelPortfolio);
       const current = calculateCurrentAllocation();
-      
+
       setModelAllocation(model);
       setCurrentAllocation(current);
-      setSimulatedAllocation(current);
+      setSimulatedAllocation(current); // Initialize simulated to current
       const newDeviations = calculateDeviations(model, current);
       setDeviations(newDeviations);
-      setSimulatedDeviations(newDeviations);
+      setSimulatedDeviations(newDeviations); // Initialize simulated deviations
       setWhatIfDirty(false);
+      // Reset other modes if portfolio changes
+      setShowWhatIfAnalysis(false);
+      setShowSellBuyRebalancing(false);
+      setShowBuyOnlyRebalancing(false);
+      setNewInvestmentAmount("");
+      setBuyOnlySuggestions([]);
+      setRecalculatedSuggestions([]);
+      setBuyOnlyUnallocatedAmount(0);
+      setSelectedTrades({});
     }
-  }, [selectedModelPortfolio, calculateModelAllocation, calculateCurrentAllocation, calculateDeviations]);
+  }, [
+    selectedModelPortfolio,
+    calculateModelAllocation,
+    calculateCurrentAllocation,
+    calculateDeviations,
+  ]);
 
-  // Update rebalance actions when deviations change
+  // Update rebalance actions when deviations change (for Sell-Buy mode)
   useEffect(() => {
     if (selectedModelPortfolio && Object.keys(deviations).length > 0) {
-      const suggestions = generateRebalanceSuggestions();
+      const suggestions = memoizedGenerateRebalanceSuggestions(); // Use memoized version
       setRebalanceActions(suggestions);
-      
+
       // Only calculate simulated allocation if sell-buy rebalancing is shown
       if (showSellBuyRebalancing) {
-        // Calculate simulated allocation after applying all trades
+        // Calculate simulated allocation after applying all generated trades
         const categoryValues = {};
         let newTotalValue = totalPortfolioValue;
-        
+
         // Initialize category values based on current allocation
-        Object.keys(currentAllocation).forEach(categoryId => {
-          categoryValues[categoryId] = (currentAllocation[categoryId] / 100) * totalPortfolioValue;
+        Object.keys(currentAllocation).forEach((categoryId) => {
+          categoryValues[categoryId] =
+            (currentAllocation[categoryId] / 100) * totalPortfolioValue;
         });
-        
-        // First apply all sell trades (they affect the total value)
-        suggestions.forEach(suggestion => {
-          if (suggestion.action.startsWith('SELL')) {
+
+        // Apply all sell trades first (they affect the total value available for buys)
+        let cashFromSales = 0;
+        suggestions.forEach((suggestion) => {
+          if (suggestion.action.startsWith("SELL")) {
             const categoryName = suggestion.category;
-            const categoryId = categories.find(c => c.name === categoryName)?.id || 'uncategorized';
+            const categoryId =
+              categories.find((c) => c.name === categoryName)?.id ||
+              "uncategorized";
             const amount = suggestion.amount;
-            
+
             // Reduce category value and total value
-            categoryValues[categoryId] = Math.max(0, categoryValues[categoryId] - amount);
-            newTotalValue -= amount;
+            const currentCatValue = categoryValues[categoryId] || 0;
+            const actualSellAmount = Math.min(amount, currentCatValue); // Don't sell more than exists
+            categoryValues[categoryId] = currentCatValue - actualSellAmount;
+            newTotalValue -= actualSellAmount;
+            cashFromSales += actualSellAmount;
           }
         });
-        
-        // Then apply all buy trades
-        suggestions.forEach(suggestion => {
-          if (suggestion.action.startsWith('BUY')) {
+
+        // Then apply all buy trades using cash from sales (or assuming external funding if buys > sells)
+        let cashForBuys = cashFromSales; // Simplification: assume buys are funded by sells
+        suggestions.forEach((suggestion) => {
+          if (suggestion.action.startsWith("BUY")) {
             const categoryName = suggestion.category;
-            const categoryId = categories.find(c => c.name === categoryName)?.id || 'uncategorized';
+            const categoryId =
+              categories.find((c) => c.name === categoryName)?.id ||
+              "uncategorized";
             const amount = suggestion.amount;
-            
-            // Increase category value and total value
-            categoryValues[categoryId] = (categoryValues[categoryId] || 0) + amount;
-            newTotalValue += amount;
+
+            // For this simulation, assume we have the funds
+            categoryValues[categoryId] =
+              (categoryValues[categoryId] || 0) + amount;
+            newTotalValue += amount; // Total value increases by buy amount
           }
         });
-        
+
         // Calculate new percentages based on final total value
-        const simulatedCategoryValues = {};
+        const simulatedCategoryPercentages = {};
         if (newTotalValue > 0) {
-          Object.keys(categoryValues).forEach(categoryId => {
-            simulatedCategoryValues[categoryId] = (categoryValues[categoryId] / newTotalValue) * 100;
+          Object.keys(categoryValues).forEach((categoryId) => {
+            simulatedCategoryPercentages[categoryId] =
+              (categoryValues[categoryId] / newTotalValue) * 100;
           });
         }
-        
+
         // Calculate new deviations
-        const newDeviations = calculateDeviations(modelAllocation, simulatedCategoryValues);
-        
-        setSimulatedAllocation(simulatedCategoryValues);
+        const newDeviations = calculateDeviations(
+          modelAllocation,
+          simulatedCategoryPercentages
+        );
+
+        setSimulatedAllocation(simulatedCategoryPercentages);
         setSimulatedDeviations(newDeviations);
+      } else if (!showWhatIfAnalysis && !showBuyOnlyRebalancing) {
+        // If no other mode is active, reset simulation to current
+        setSimulatedAllocation(currentAllocation);
+        setSimulatedDeviations(deviations);
       }
     }
-  }, [deviations, totalPortfolioValue, selectedModelPortfolio, categories, modelAllocation, calculateDeviations, currentAllocation, showSellBuyRebalancing]);
-  
+  }, [
+    deviations,
+    totalPortfolioValue,
+    selectedModelPortfolio,
+    categories,
+    modelAllocation,
+    calculateDeviations,
+    currentAllocation,
+    showSellBuyRebalancing,
+    showWhatIfAnalysis,
+    showBuyOnlyRebalancing,
+  ]); // Added dependencies
+
   // Memoize generateRebalanceSuggestions and generateSpecificSuggestions
   const memoizedGenerateRebalanceSuggestions = useCallback(() => {
     return generateRebalanceSuggestions();
-  }, [selectedModelPortfolio, totalPortfolioValue, deviations, accounts, categories, modelPortfolios, stockCategories, stockPrices]);
-  
+  }, [
+    selectedModelPortfolio,
+    totalPortfolioValue,
+    deviations,
+    accounts,
+    categories,
+    modelPortfolios,
+    stockCategories,
+    stockPrices,
+  ]);
+
   const memoizedGenerateSpecificSuggestions = useCallback(() => {
     return generateSpecificSuggestions();
-  }, [accounts, categories, modelPortfolios, selectedModelPortfolio, stockCategories, stockPrices, totalPortfolioValue, calculateDeviations]);
-  
+  }, [
+    accounts,
+    categories,
+    modelPortfolios,
+    selectedModelPortfolio,
+    stockCategories,
+    stockPrices,
+    totalPortfolioValue,
+  ]);
+
   // Calculate buy-only rebalancing suggestions when investment amount changes
   useEffect(() => {
     if (showBuyOnlyRebalancing && newInvestmentAmount) {
-      const { suggestions, projections } = generateBuyOnlySuggestions(newInvestmentAmount);
+      // Destructure the result including unallocatedAmount
+      const { suggestions, projections, unallocatedAmount } =
+        generateBuyOnlySuggestions(newInvestmentAmount);
       setBuyOnlySuggestions(suggestions);
-      
+      setBuyOnlyUnallocatedAmount(unallocatedAmount); // Store unallocated amount
+
       // Initialize all suggestions as selected
       const initialSelections = {};
       suggestions.forEach((suggestion, index) => {
         initialSelections[index] = true;
       });
       setSelectedTrades(initialSelections);
-      setRecalculatedSuggestions(suggestions);
-      
+      setRecalculatedSuggestions(suggestions); // Start with initially calculated ones
+
       if (projections) {
         setSimulatedAllocation(projections.categoryAllocation);
         setSimulatedDeviations(projections.deviations);
+      } else {
+        // Reset if no projections
+        setSimulatedAllocation(currentAllocation);
+        setSimulatedDeviations(deviations);
       }
+    } else if (showBuyOnlyRebalancing) {
+      // Clear suggestions if amount is cleared or zero
+      setBuyOnlySuggestions([]);
+      setRecalculatedSuggestions([]);
+      setBuyOnlyUnallocatedAmount(0);
+      setSelectedTrades({});
+      // Reset simulation to current when clearing amount
+      setSimulatedAllocation(currentAllocation);
+      setSimulatedDeviations(deviations);
     }
-  }, [newInvestmentAmount, showBuyOnlyRebalancing, generateBuyOnlySuggestions]);
+  }, [
+    newInvestmentAmount,
+    showBuyOnlyRebalancing,
+    generateBuyOnlySuggestions,
+    currentAllocation,
+    deviations,
+  ]); // Added currentAllocation/deviations
 
-  // Handle changes in buy-only trade selection
+  // Handle changes in buy-only trade selection (SIMPLIFIED)
   const handleTradeSelectionChange = (index, checked) => {
     const newSelectedTrades = { ...selectedTrades, [index]: checked };
     setSelectedTrades(newSelectedTrades);
-    
-    // Filter to only selected trades
-    const selectedSuggestions = buyOnlySuggestions.filter((_, i) => newSelectedTrades[i]);
-    
-    // If we have at least one selected trade, reallocate funds
-    if (selectedSuggestions.length > 0) {
-      const recalculatedSuggestions = reallocateRemainingFunds(selectedSuggestions);
-      setRecalculatedSuggestions(recalculatedSuggestions);
-      
-      // Update each suggestion's projected values based on recalculated data
-      updateSuggestionProjections(recalculatedSuggestions);
-      
-      // Recalculate overall projections for the portfolio
-      recalculateProjectionsForSelectedTrades(recalculatedSuggestions);
-    } else {
-      // No selections, reset to empty
-      setRecalculatedSuggestions([]);
-      setSimulatedAllocation(currentAllocation);
-      setSimulatedDeviations(deviations);
-    }
-  };
-  
-  // Update projected allocation percentages for each suggestion
-  const updateSuggestionProjections = (suggestions) => {
-    if (suggestions.length === 0) return suggestions;
-    
-    const amount = parseFloat(newInvestmentAmount);
-    if (isNaN(amount) || amount <= 0) return suggestions;
-    
-    const futureTotalValue = totalPortfolioValue + suggestions.reduce(
-      (sum, s) => sum + parseFloat(s.value), 0
+
+    // Filter to only selected trades from the *original* suggestions
+    const selectedSuggestions = buyOnlySuggestions.filter(
+      (_, i) => newSelectedTrades[i]
     );
-    
-    // Get current portfolio stock values with projections
-    const projectedStockValues = {};
-    
-    // Initialize with current values
-    accounts.forEach(account => {
-      account.positions.forEach(position => {
-        const price = stockPrices[position.symbol] || 0;
-        const value = price * position.shares;
-        
-        if (projectedStockValues[position.symbol]) {
-          projectedStockValues[position.symbol].value += value;
-          projectedStockValues[position.symbol].shares += position.shares;
-        } else {
-          projectedStockValues[position.symbol] = { 
-            value, 
-            shares: position.shares,
-            price,
-            percentage: 0,
-            category: stockCategories[position.symbol] || 'uncategorized'
-          };
-        }
-      });
-    });
-    
-    // Add selected trades to projected values
-    suggestions.forEach(suggestion => {
-      const symbol = suggestion.symbol;
-      const price = parseFloat(suggestion.price);
-      const shares = suggestion.shares;
-      const value = price * shares;
-      
-      if (projectedStockValues[symbol]) {
-        projectedStockValues[symbol].value += value;
-        projectedStockValues[symbol].shares += shares;
-      } else {
-        projectedStockValues[symbol] = {
-          value,
-          shares,
-          price,
-          percentage: 0,
-          category: suggestion.categoryId
-        };
-      }
-    });
-    
-    // Calculate projected percentages for each stock
-    Object.keys(projectedStockValues).forEach(symbol => {
-      projectedStockValues[symbol].percentage = 
-        (projectedStockValues[symbol].value / futureTotalValue) * 100;
-    });
-    
-    // Update each suggestion with its new projected percentage
-    const updatedSuggestions = [...suggestions];
-    updatedSuggestions.forEach(suggestion => {
-      const symbol = suggestion.symbol;
-      if (projectedStockValues[symbol]) {
-        suggestion.projectedPercentage = projectedStockValues[symbol].percentage.toFixed(2);
-        suggestion.projectedDeviation = (
-          projectedStockValues[symbol].percentage - parseFloat(suggestion.targetPercentage)
-        ).toFixed(2);
-      }
-    });
-    
-    return updatedSuggestions;
+
+    // Update the list of what's displayed as 'recalculated' (which are now just the selected ones)
+    // Note: We will recalculate projections within recalculateProjectionsForSelectedTrades
+
+    // Recalculate overall projections for the portfolio based ONLY on selected trades
+    recalculateProjectionsForSelectedTrades(selectedSuggestions);
   };
-  
-  // Reallocate unused funds to remaining selected trades
-  const reallocateRemainingFunds = (selectedSuggestions) => {
-    if (selectedSuggestions.length === 0) return [];
-    
-    const amount = parseFloat(newInvestmentAmount);
-    if (isNaN(amount) || amount <= 0) return selectedSuggestions;
-    
-    // Sum up currently allocated funds
-    const currentlyAllocated = selectedSuggestions.reduce((sum, s) => sum + parseFloat(s.value), 0);
-    
-    // Calculate how much is still available to allocate
-    const remainingFunds = amount - currentlyAllocated;
-    
-    // If nothing to reallocate or only one suggestion, return original
-    if (remainingFunds <= 0 || selectedSuggestions.length === 0) {
-      return updateSuggestionProjections(selectedSuggestions);
-    }
-    
-    // Create a deep copy of selected suggestions
-    const enhancedSuggestions = JSON.parse(JSON.stringify(selectedSuggestions));
-    
-    // Group by category to maintain category allocation strategy
-    const suggestionsByCategory = {};
-    enhancedSuggestions.forEach(suggestion => {
-      if (!suggestionsByCategory[suggestion.categoryId]) {
-        suggestionsByCategory[suggestion.categoryId] = [];
-      }
-      suggestionsByCategory[suggestion.categoryId].push(suggestion);
-    });
-    
-    // Calculate shortfall by category
-    const categoryShortfall = {};
-    let totalShortfall = 0;
-    
-    Object.entries(suggestionsByCategory).forEach(([categoryId, suggestions]) => {
-      // Find original category's allocation amount
-      const categoryForId = categories.find(c => c.id === categoryId) || { name: 'Uncategorized' };
-      const underweightCategory = findUnderweightCategory(categoryId, categoryForId.name);
-      
-      if (underweightCategory) {
-        const originalAllocation = underweightCategory.shortfall;
-        const currentlyUsed = suggestions.reduce((sum, s) => sum + parseFloat(s.value), 0);
-        const shortfall = Math.max(0, originalAllocation - currentlyUsed);
-        
-        categoryShortfall[categoryId] = shortfall;
-        totalShortfall += shortfall;
-      }
-    });
-    
-    // If no shortfall or no categories to allocate to, return original
-    if (totalShortfall <= 0) {
-      return updateSuggestionProjections(enhancedSuggestions);
-    }
-    
-    // Distribute remaining funds proportionally based on category shortfall
-    const categoryAllocation = {};
-    Object.entries(categoryShortfall).forEach(([categoryId, shortfall]) => {
-      const allocationWeight = shortfall / totalShortfall;
-      categoryAllocation[categoryId] = Math.min(allocationWeight * remainingFunds, shortfall);
-    });
-    
-    // Add additional shares to each position based on category allocation
-    Object.entries(suggestionsByCategory).forEach(([categoryId, suggestions]) => {
-      const additionalFunds = categoryAllocation[categoryId] || 0;
-      
-      if (additionalFunds <= 0 || suggestions.length === 0) return;
-      
-      // Sort by most underweight first (lowest deviation)
-      suggestions.sort((a, b) => parseFloat(a.deviation) - parseFloat(b.deviation));
-      
-      // For each position in the category, try to add more shares
-      let remainingCategoryFunds = additionalFunds;
-      let positionIndex = 0;
-      
-      while (remainingCategoryFunds > 0 && positionIndex < suggestions.length) {
-        const suggestion = suggestions[positionIndex];
-        const price = parseFloat(suggestion.price);
-        
-        if (price > 0 && remainingCategoryFunds >= price) {
-          // Calculate how many additional shares we can buy
-          const additionalShares = Math.floor(remainingCategoryFunds / price);
-          
-          if (additionalShares > 0) {
-            const additionalValue = additionalShares * price;
-            remainingCategoryFunds -= additionalValue;
-            
-            // Update the suggestion
-            suggestion.shares += additionalShares;
-            suggestion.value = (parseFloat(suggestion.value) + additionalValue).toFixed(2);
-            
-            // Update allocation percentage
-            const newAllocationPercent = (parseFloat(suggestion.value) / amount) * 100;
-            suggestion.allocationPercent = newAllocationPercent.toFixed(1);
-          }
-        }
-        
-        positionIndex++;
-        
-        // If we've gone through all positions but still have funds, start again
-        if (positionIndex >= suggestions.length && remainingCategoryFunds >= Math.min(...suggestions.map(s => parseFloat(s.price)))) {
-          positionIndex = 0;
-        } else if (positionIndex >= suggestions.length) {
-          break;
-        }
-      }
-    });
-    
-    // Calculate and update projected percentages
-    return updateSuggestionProjections(enhancedSuggestions);
-  };
-  
-  // Helper function to find underweight category information
-  const findUnderweightCategory = (categoryId, categoryName) => {
-    const modelAlloc = modelAllocation[categoryId] || 0;
-    const currentAlloc = currentAllocation[categoryId] || 0;
-    const deviation = currentAlloc - modelAlloc;
-    
-    if (deviation < -0.5) {
-      const futureTotalValue = totalPortfolioValue + parseFloat(newInvestmentAmount);
-      return {
-        id: categoryId,
-        name: categoryName,
-        modelAllocation: modelAlloc,
-        currentAllocation: currentAlloc,
-        deviation,
-        shortfall: ((modelAlloc / 100) * futureTotalValue) - ((currentAlloc / 100) * totalPortfolioValue)
-      };
-    }
-    
-    return null;
-  };
-  
-  // Recalculate projected allocations based on selected trades
+
+  // Recalculate projected allocations based on selected trades (Updates recalculateSuggestions state)
   const recalculateProjectionsForSelectedTrades = (selectedSuggestions) => {
-    if (!selectedModelPortfolio || selectedSuggestions.length === 0) {
-      // Reset to current allocation if no selections
+    if (!selectedModelPortfolio) {
+      // Reset to current allocation if no model selected
       setSimulatedAllocation(currentAllocation);
       setSimulatedDeviations(deviations);
+      setRecalculatedSuggestions([]); // Clear suggestions display
       return;
     }
-    
-    const amount = parseFloat(newInvestmentAmount);
-    if (isNaN(amount) || amount <= 0) return;
-    
-    const futureTotalValue = totalPortfolioValue + selectedSuggestions.reduce(
-      (sum, s) => sum + parseFloat(s.value), 0
+
+    // Calculate the total value added ONLY by the selected suggestions
+    const valueAddedBySelected = selectedSuggestions.reduce(
+      (sum, s) => sum + parseFloat(s.value),
+      0
     );
-    
-    // Get current portfolio stock values
+
+    // The future total value is current + only the value of selected trades
+    const futureTotalValue = totalPortfolioValue + valueAddedBySelected;
+
+    // Get current portfolio stock values for projection base
     const projectedStockValues = {};
-    
     // Initialize with current values
-    accounts.forEach(account => {
-      account.positions.forEach(position => {
+    accounts.forEach((account) => {
+      account.positions.forEach((position) => {
         const price = stockPrices[position.symbol] || 0;
         const value = price * position.shares;
-        
+        const categoryId = stockCategories[position.symbol] || "uncategorized";
+
         if (projectedStockValues[position.symbol]) {
           projectedStockValues[position.symbol].value += value;
           projectedStockValues[position.symbol].shares += position.shares;
         } else {
-          projectedStockValues[position.symbol] = { 
-            value, 
+          projectedStockValues[position.symbol] = {
+            value,
             shares: position.shares,
             price,
             percentage: 0, // Will calculate after adding purchases
-            category: stockCategories[position.symbol] || 'uncategorized'
+            category: categoryId,
+            symbol: position.symbol, // Keep symbol
           };
         }
       });
     });
-    
+
     // Add selected trades to projected values
-    selectedSuggestions.forEach(suggestion => {
+    selectedSuggestions.forEach((suggestion) => {
       const symbol = suggestion.symbol;
       const price = parseFloat(suggestion.price);
       const shares = suggestion.shares;
-      const value = price * shares;
-      
+      const value = price * shares; // Use calculated value to avoid rounding issues
+
       if (projectedStockValues[symbol]) {
         projectedStockValues[symbol].value += value;
         projectedStockValues[symbol].shares += shares;
       } else {
+        // This case should be rare if suggestions are based on existing/model stocks
         projectedStockValues[symbol] = {
           value,
           shares,
           price,
           percentage: 0, // Will calculate below
-          category: suggestion.categoryId
+          category: suggestion.categoryId,
+          symbol: symbol,
         };
       }
     });
-    
-    // Calculate projected percentages
-    Object.keys(projectedStockValues).forEach(symbol => {
-      projectedStockValues[symbol].percentage = 
-        (projectedStockValues[symbol].value / futureTotalValue) * 100;
+
+    // Calculate projected percentages for each stock
+    Object.values(projectedStockValues).forEach((stockData) => {
+      stockData.percentage =
+        futureTotalValue > 0 ? (stockData.value / futureTotalValue) * 100 : 0;
     });
-    
+
+    // --- Update individual suggestion projections ---
+    // We need to update the 'projectedPercentage' and 'projectedDeviation' within the selectedSuggestions
+    // and store this updated list in 'recalculatedSuggestions' state.
+    const updatedRecalculatedSuggestions = selectedSuggestions.map(
+      (suggestion) => {
+        const symbol = suggestion.symbol;
+        const modelTarget = parseFloat(suggestion.targetPercentage);
+        let projectedPerc = 0;
+        if (projectedStockValues[symbol]) {
+          projectedPerc = projectedStockValues[symbol].percentage;
+        }
+        return {
+          ...suggestion,
+          projectedPercentage: projectedPerc.toFixed(2),
+          projectedDeviation: (projectedPerc - modelTarget).toFixed(2),
+        };
+      }
+    );
+    setRecalculatedSuggestions(updatedRecalculatedSuggestions); // Update state with correct projections
+
     // Calculate projected allocation by category
     const projectedCategoryAllocation = {};
-    categories.forEach(category => {
-      projectedCategoryAllocation[category.id] = 0;
+    const allProjCatIds = new Set([
+      ...categories.map((c) => c.id),
+      "uncategorized",
+      ...Object.values(projectedStockValues).map((s) => s.category),
+    ]);
+    allProjCatIds.forEach((catId) => {
+      projectedCategoryAllocation[catId] = 0;
     });
-    projectedCategoryAllocation['uncategorized'] = 0;
-    
-    Object.entries(projectedStockValues).forEach(([symbol, data]) => {
+
+    // Sum percentages by category from projected stock values
+    Object.values(projectedStockValues).forEach((data) => {
       const categoryId = data.category;
-      projectedCategoryAllocation[categoryId] = 
+      projectedCategoryAllocation[categoryId] =
         (projectedCategoryAllocation[categoryId] || 0) + data.percentage;
     });
-    
+
     // Update projected deviations
-    const newDeviations = calculateDeviations(modelAllocation, projectedCategoryAllocation);
-    
+    const newDeviations = calculateDeviations(
+      modelAllocation,
+      projectedCategoryAllocation
+    );
+
     // Update state
     setSimulatedAllocation(projectedCategoryAllocation);
     setSimulatedDeviations(newDeviations);
   };
 
+  // --- START: NEW calculateInvestmentToTarget ---
+  const calculateInvestmentToTarget = useCallback(() => {
+    if (!selectedModelPortfolio || totalPortfolioValue <= 0) {
+      alert(
+        "Please select a model portfolio and ensure current portfolio value is positive."
+      );
+      return;
+    }
+    if (
+      !modelAllocation ||
+      Object.keys(modelAllocation).length === 0 ||
+      !currentAllocation ||
+      Object.keys(currentAllocation).length === 0
+    ) {
+      alert("Model or current allocation data is missing. Cannot calculate.");
+      return;
+    }
+
+    setIsCalculatingNeeded(true);
+
+    let calculatedAmount = 0;
+    let iterations = 0;
+    const MAX_CALC_ITERATIONS = 100;
+    const TOLERANCE = 1.0; // Stop when difference is less than $1
+
+    // Get current values in dollars
+    const currentValues = {};
+    const allCalcCatIds = new Set([
+      ...categories.map((c) => c.id),
+      "uncategorized",
+      ...Object.keys(modelAllocation),
+      ...Object.keys(currentAllocation),
+    ]);
+    allCalcCatIds.forEach((catId) => {
+      currentValues[catId] =
+        ((currentAllocation[catId] || 0) / 100) * totalPortfolioValue;
+    });
+
+    // Identify underweight categories
+    const underweightCats = [];
+    allCalcCatIds.forEach((catId) => {
+      const modelPerc = modelAllocation[catId] || 0;
+      const currentPerc = currentAllocation[catId] || 0;
+      if (modelPerc > currentPerc) {
+        underweightCats.push({
+          id: catId,
+          currentVal: currentValues[catId] || 0,
+          targetPercent: modelPerc,
+        });
+      }
+    });
+
+    if (underweightCats.length === 0) {
+      alert(
+        "All categories are at or above their target allocation. No additional investment needed based on this calculation."
+      );
+      setNewInvestmentAmount("0"); // Set to 0
+      setIsCalculatingNeeded(false);
+      return;
+    }
+
+    // Iteratively approximate the needed amount
+    // TargetValue = Target% * (CurrentTotal + NeededAmount)
+    // Shortfall = TargetValue - CurrentValue
+    // Sum(Shortfalls) = NeededAmount (approximately)
+    // Let N = NeededAmount. N = Sum [ max(0, (Target%_i * (TotalValue + N)) - CurrentValue_i) ]
+    let previousN = -1;
+    while (iterations < MAX_CALC_ITERATIONS) {
+      iterations++;
+      const futureTotal = totalPortfolioValue + calculatedAmount; // Use current guess for N
+      let currentTotalShortfall = 0;
+
+      underweightCats.forEach((cat) => {
+        const targetValue = (cat.targetPercent / 100) * futureTotal;
+        const shortfall = Math.max(0, targetValue - cat.currentVal);
+        currentTotalShortfall += shortfall;
+      });
+
+      // Check for convergence: is the new calculated shortfall close to the guessed amount?
+      if (Math.abs(currentTotalShortfall - calculatedAmount) < TOLERANCE) {
+        calculatedAmount = currentTotalShortfall; // Final amount
+        break;
+      }
+
+      // Check for oscillation or non-convergence (if change is tiny)
+      if (previousN !== -1 && Math.abs(calculatedAmount - previousN) < 0.01) {
+        console.warn(
+          "Calculation might not be converging stably. Using current estimate."
+        );
+        calculatedAmount = currentTotalShortfall; // Use the current calculated shortfall
+        break;
+      }
+
+      previousN = calculatedAmount;
+      // Update guess for next iteration using the calculated total shortfall
+      calculatedAmount = currentTotalShortfall;
+
+      // Prevent negative amount if something went wrong
+      if (calculatedAmount < 0) calculatedAmount = 0;
+    }
+
+    if (iterations >= MAX_CALC_ITERATIONS) {
+      console.warn(
+        "Maximum iterations reached for calculating needed investment."
+      );
+    }
+
+    const finalAmount = Math.round(calculatedAmount);
+    setNewInvestmentAmount(String(finalAmount));
+    setIsCalculatingNeeded(false);
+  }, [
+    selectedModelPortfolio,
+    totalPortfolioValue,
+    modelAllocation,
+    currentAllocation,
+    categories,
+  ]); // Dependencies
+  // --- END: NEW calculateInvestmentToTarget ---
+
   // Prepare data for the charts
   const getChartData = (allocations, title) => {
+    const labels = [];
+    const data = [];
+    const backgroundColors = [];
+    const colors = generateColors(categories.length + 1); // Generate enough colors
+
+    let colorIndex = 0;
+    categories.forEach((cat) => {
+      if (allocations[cat.id] > 0.01) {
+        // Only include categories with meaningful allocation
+        labels.push(cat.name);
+        data.push(allocations[cat.id] || 0);
+        backgroundColors.push(colors[colorIndex % colors.length]);
+        colorIndex++;
+      }
+    });
+
+    if (allocations["uncategorized"] > 0.01) {
+      labels.push("Uncategorized");
+      data.push(allocations["uncategorized"] || 0);
+      backgroundColors.push(colors[colorIndex % colors.length]);
+    }
+
     return {
-      labels: categories.map(cat => cat.name).concat(['Uncategorized']),
+      labels: labels,
       datasets: [
         {
           label: title,
-          data: categories.map(cat => allocations[cat.id] || 0).concat([allocations['uncategorized'] || 0]),
-          backgroundColor: generateColors(categories.length + 1),
+          data: data,
+          backgroundColor: backgroundColors,
           borderWidth: 1,
         },
       ],
@@ -1211,59 +1343,99 @@ const PortfolioComparison = ({
   // Modify the export functions
   const prepareJsonExport = () => {
     if (!selectedModelPortfolio) return;
-    
+
     // Get the selected model portfolio object
-    const modelPortfolioObj = modelPortfolios.find(p => p.name === selectedModelPortfolio);
+    const modelPortfolioObj = modelPortfolios.find(
+      (p) => p.name === selectedModelPortfolio
+    );
     if (!modelPortfolioObj) return;
-    
+
     const data = {
       modelPortfolio: selectedModelPortfolio,
       exportDate: new Date().toISOString(),
       allocations: {
         model: modelAllocation,
         current: currentAllocation,
-        deviation: deviations
+        deviation: deviations,
+        // Include simulated if relevant
+        ...(((showWhatIfAnalysis && whatIfDirty) ||
+          showSellBuyRebalancing ||
+          (showBuyOnlyRebalancing && recalculatedSuggestions.length > 0)) && {
+          simulated: simulatedAllocation,
+        }),
+        ...(((showWhatIfAnalysis && whatIfDirty) ||
+          showSellBuyRebalancing ||
+          (showBuyOnlyRebalancing && recalculatedSuggestions.length > 0)) && {
+          simulatedDeviation: simulatedDeviations,
+        }),
       },
-      rebalanceSuggestions: memoizedGenerateRebalanceSuggestions(),
-      currentHoldings: accounts.flatMap(account => {
-        return account.positions.map(position => {
+      totalPortfolioValue: totalPortfolioValue,
+      rebalanceSuggestions: memoizedGenerateRebalanceSuggestions(), // General suggestions
+      specificStockSuggestions: memoizedGenerateSpecificSuggestions(), // Specific suggestions
+      currentHoldings: accounts.flatMap((account) => {
+        return account.positions.map((position) => {
           const symbol = position.symbol;
           const price = stockPrices[symbol] || 0;
           const value = position.shares * price;
-          const percentage = totalPortfolioValue > 0 ? (value / totalPortfolioValue) * 100 : 0;
-          
+          const percentage =
+            totalPortfolioValue > 0 ? (value / totalPortfolioValue) * 100 : 0;
+          const categoryId = stockCategories[symbol] || "uncategorized";
+
           return {
             symbol,
             account: account.name,
-            category: categories.find(c => c.id === stockCategories[symbol])?.name || 'Uncategorized',
+            category:
+              categories.find((c) => c.id === categoryId)?.name ||
+              "Uncategorized",
+            categoryId: categoryId,
             shares: position.shares,
             price,
             value,
-            percentage
+            percentage,
           };
         });
       }),
-      modelHoldings: modelPortfolioObj.stocks.map(stock => {
+      modelHoldings: modelPortfolioObj.stocks.map((stock) => {
+        const categoryId = stockCategories[stock.symbol] || "uncategorized";
         return {
           symbol: stock.symbol,
-          category: categories.find(c => c.id === stockCategories[stock.symbol])?.name || 'Uncategorized',
-          percentage: stock.percentage
+          category:
+            categories.find((c) => c.id === categoryId)?.name ||
+            "Uncategorized",
+          categoryId: categoryId,
+          percentage: stock.percentage,
         };
-      })
+      }),
+      // Include active rebalancing mode suggestions
+      ...(showBuyOnlyRebalancing &&
+        recalculatedSuggestions.length > 0 && {
+          buyOnlySelectedTrades: recalculatedSuggestions,
+        }),
+      ...(showBuyOnlyRebalancing && {
+        buyOnlyInvestmentAmount: newInvestmentAmount,
+      }),
+      ...(showBuyOnlyRebalancing && {
+        buyOnlyUnallocatedAmount: buyOnlyUnallocatedAmount,
+      }),
     };
-    
+
     setJsonExportData(data);
     setShowJsonModal(true);
   };
 
   const downloadJson = () => {
     if (!jsonExportData) return;
-    
-    const blob = new Blob([JSON.stringify(jsonExportData, null, 2)], { type: 'application/json' });
+
+    const blob = new Blob([JSON.stringify(jsonExportData, null, 2)], {
+      type: "application/json",
+    });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
+    const a = document.createElement("a");
     a.href = url;
-    a.download = `portfolio-comparison-${selectedModelPortfolio.replace(/\s+/g, '-')}-${new Date().toISOString().split('T')[0]}.json`;
+    a.download = `portfolio-comparison-${selectedModelPortfolio.replace(
+      /\s+/g,
+      "-"
+    )}-${new Date().toISOString().split("T")[0]}.json`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -1272,87 +1444,116 @@ const PortfolioComparison = ({
   };
 
   const prepareCsvExport = () => {
-    let suggestions;
-    
-    if (showBuyOnlyRebalancing) {
+    let csvContent = "";
+    let exportMode = "general"; // Default
+
+    if (showBuyOnlyRebalancing && recalculatedSuggestions.length > 0) {
+      exportMode = "buyOnly";
       // For buy-only mode, use the selected/recalculated suggestions
-      if (!recalculatedSuggestions || recalculatedSuggestions.length === 0) {
-        alert('No buy-only rebalancing suggestions available to export.');
-        return;
-      }
-      
-      // Format buy-only suggestions for CSV
-      const headers = ['Symbol', 'Category', 'Shares to Buy', 'Investment Amount', 'Percent of New Money', 'Current %', 'Target %', 'Deviation', 'Projected %', 'Projected Deviation'];
+      const headers = [
+        "Symbol",
+        "Category",
+        "Shares to Buy",
+        "Investment Amount",
+        "Percent of New Money",
+        "Current %",
+        "Target %",
+        "Deviation",
+        "Projected %",
+        "Projected Deviation",
+      ];
       const csvRows = [
-        headers.join(','),
-        ...recalculatedSuggestions.map(suggestion => {
+        headers.join(","),
+        ...recalculatedSuggestions.map((suggestion) => {
           return [
             `"${suggestion.symbol}"`,
             `"${suggestion.category}"`,
             suggestion.shares,
             parseFloat(suggestion.value).toFixed(2),
-            `${suggestion.allocationPercent}%`,
+            `${suggestion.allocationPercent}%`, // Use parseFloat to handle potential strings
             `${suggestion.currentPercentage}%`,
             `${suggestion.targetPercentage}%`,
             `${suggestion.deviation}%`,
             `${suggestion.projectedPercentage}%`,
-            `${suggestion.projectedDeviation}%`
-          ].join(',');
-        })
+            `${suggestion.projectedDeviation}%`,
+          ].join(",");
+        }),
       ];
-      
-      const csvContent = csvRows.join('\n');
-      setCsvExportData(csvContent);
-      setShowCsvModal(true);
-      
-    } else {
-      // For sell-buy rebalancing mode, use the regular rebalancing suggestions
-      suggestions = memoizedGenerateRebalanceSuggestions();
-      
-      if (!suggestions || suggestions.length === 0) {
-        alert('No rebalancing suggestions available to export.');
-        return;
-      }
-      
+      // Add summary rows
+      csvRows.push(""); // Blank line
+      csvRows.push(
+        `Total Investment Amount:,${parseFloat(
+          newInvestmentAmount || 0
+        ).toFixed(2)}`
+      );
+      const totalInvested = recalculatedSuggestions.reduce(
+        (sum, s) => sum + parseFloat(s.value),
+        0
+      );
+      csvRows.push(`Total Selected Investment:,${totalInvested.toFixed(2)}`);
+      csvRows.push(
+        `Unallocated Amount:,${buyOnlyUnallocatedAmount.toFixed(2)}`
+      );
+
+      csvContent = csvRows.join("\n");
+    } else if (showSellBuyRebalancing && rebalanceActions.length > 0) {
+      exportMode = "sellBuy";
+      // For sell-buy rebalancing mode, use the rebalanceActions
+      const suggestions = rebalanceActions;
+
       // Calculate shares for each suggestion and get category information
-      const suggestionsWithDetails = suggestions.map(suggestion => {
-        const symbol = suggestion.action.split(' ')[1];  // Extract symbol from "BUY AAPL" or "SELL AAPL"
-        const shares = symbol && stockPrices[symbol] 
-          ? Math.floor(suggestion.amount / stockPrices[symbol])
-          : 0;
-        const categoryId = stockCategories[symbol] || 'uncategorized';
-        const categoryName = categories.find(c => c.id === categoryId)?.name || 'Uncategorized';
-        
+      const suggestionsWithDetails = suggestions.map((suggestion) => {
+        const parts = suggestion.action.split(" ");
+        const actionType = parts[0]; // BUY or SELL
+        const symbol = parts[1]; // AAPL
+        const price = stockPrices[symbol] || 0;
+        const shares = price > 0 ? Math.floor(suggestion.amount / price) : 0;
+        const categoryId = stockCategories[symbol] || "uncategorized";
+        const categoryName =
+          categories.find((c) => c.id === categoryId)?.name || "Uncategorized";
+
         return {
           symbol,
           category: categoryName,
           action: suggestion.action,
           shares,
           amount: suggestion.amount,
-          currentCategoryPercentage: (currentAllocation[categoryId] || 0).toFixed(2),
-          targetCategoryPercentage: (modelAllocation[categoryId] || 0).toFixed(2),
-          deviation: ((currentAllocation[categoryId] || 0) - (modelAllocation[categoryId] || 0)).toFixed(2),
-          projectedCategoryPercentage: (simulatedAllocation[categoryId] || 0).toFixed(2),
-          projectedDeviation: ((simulatedAllocation[categoryId] || 0) - (modelAllocation[categoryId] || 0)).toFixed(2)
+          currentCategoryPercentage: (
+            currentAllocation[categoryId] || 0
+          ).toFixed(2),
+          targetCategoryPercentage: (modelAllocation[categoryId] || 0).toFixed(
+            2
+          ),
+          deviation: (
+            (currentAllocation[categoryId] || 0) -
+            (modelAllocation[categoryId] || 0)
+          ).toFixed(2),
+          projectedCategoryPercentage: (
+            simulatedAllocation[categoryId] || 0
+          ).toFixed(2),
+          projectedDeviation: (
+            (simulatedAllocation[categoryId] || 0) -
+            (modelAllocation[categoryId] || 0)
+          ).toFixed(2),
         };
       });
-      
+
       const headers = [
-        'Symbol',
-        'Category',
-        'Action',
-        'Shares',
-        'Amount',
-        'Current Category %',
-        'Target Category %',
-        'Deviation',
-        'Projected Category %',
-        'Projected Deviation'
+        "Symbol",
+        "Category",
+        "Action",
+        "Shares",
+        "Amount",
+        "Current Category %",
+        "Target Category %",
+        "Deviation",
+        "Projected Category %",
+        "Projected Deviation",
       ];
-      
+
       const csvRows = [
-        headers.join(','),
-        ...suggestionsWithDetails.map(suggestion => {
+        headers.join(","),
+        ...suggestionsWithDetails.map((suggestion) => {
           return [
             `"${suggestion.symbol}"`,
             `"${suggestion.category}"`,
@@ -1363,25 +1564,80 @@ const PortfolioComparison = ({
             `${suggestion.targetCategoryPercentage}%`,
             `${suggestion.deviation}%`,
             `${suggestion.projectedCategoryPercentage}%`,
-            `${suggestion.projectedDeviation}%`
-          ].join(',');
-        })
+            `${suggestion.projectedDeviation}%`,
+          ].join(",");
+        }),
       ];
-      
-      const csvContent = csvRows.join('\n');
-      setCsvExportData(csvContent);
-      setShowCsvModal(true);
+      // Add summary rows
+      csvRows.push(""); // Blank line
+      const totalSell = suggestionsWithDetails
+        .filter((s) => s.action.startsWith("SELL"))
+        .reduce((sum, s) => sum + parseFloat(s.amount), 0);
+      const totalBuy = suggestionsWithDetails
+        .filter((s) => s.action.startsWith("BUY"))
+        .reduce((sum, s) => sum + parseFloat(s.amount), 0);
+      csvRows.push(`Total Sell Value:,${totalSell.toFixed(2)}`);
+      csvRows.push(`Total Buy Value:,${totalBuy.toFixed(2)}`);
+      csvRows.push(`Net Cash Flow:,${(totalSell - totalBuy).toFixed(2)}`);
+
+      csvContent = csvRows.join("\n");
+    } else {
+      // Default: Export specific stock suggestions if no mode is active or suggestions exist
+      const specificSuggestions = memoizedGenerateSpecificSuggestions();
+      if (specificSuggestions.length > 0) {
+        exportMode = "specific";
+        const headers = [
+          "Symbol",
+          "Category",
+          "Action",
+          "Shares",
+          "Value",
+          "Current Stock %",
+          "Target Stock %",
+          "Deviation",
+        ];
+        const csvRows = [
+          headers.join(","),
+          ...specificSuggestions.map((s) =>
+            [
+              `"${s.symbol}"`,
+              `"${s.category}"`,
+              `"${s.action}"`,
+              s.shares,
+              parseFloat(s.value).toFixed(2),
+              `${s.currentPercentage}%`,
+              `${s.targetPercentage}%`,
+              `${s.deviation}%`,
+            ].join(",")
+          ),
+        ];
+        csvContent = csvRows.join("\n");
+      } else {
+        alert(
+          "No rebalancing suggestions available to export for the current view."
+        );
+        return;
+      }
     }
+
+    setCsvExportData(csvContent);
+    setShowCsvModal(true);
   };
 
   const downloadCsv = () => {
     if (!csvExportData) return;
-    
-    const blob = new Blob([csvExportData], { type: 'text/csv' });
+
+    const blob = new Blob([csvExportData], { type: "text/csv;charset=utf-8;" }); // Added charset
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
+    const a = document.createElement("a");
     a.href = url;
-    a.download = `rebalance-suggestions-${selectedModelPortfolio.replace(/\s+/g, '-')}-${new Date().toISOString().split('T')[0]}.csv`;
+    let filename = `rebalance-suggestions-${selectedModelPortfolio.replace(
+      /\s+/g,
+      "-"
+    )}-${new Date().toISOString().split("T")[0]}.csv`;
+    // Optional: Adjust filename based on mode if needed
+    // if (exportMode === 'buyOnly') filename = ...
+    a.download = filename;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -1395,29 +1651,73 @@ const PortfolioComparison = ({
     maintainAspectRatio: false,
     plugins: {
       legend: {
-        position: 'right',
-        align: 'center',
+        position: "right",
+        align: "center",
         labels: {
           boxWidth: 12,
           font: {
-            size: 11
+            size: 11,
           },
-          padding: 8
+          padding: 8,
+          // Filter out labels with 0 value if needed (can make chart cleaner)
+          filter: (legendItem, chartData) => {
+            const meta = chartData.datasets[0]._meta;
+            // Find the data value corresponding to the legend item
+            if (meta) {
+              const datasetIndex = 0; // Assuming one dataset
+              const index = legendItem.index;
+              // This access might change with chart.js versions
+              // A safer way might be to look up the value in the original data based on label
+              const value = chartData.datasets[datasetIndex].data[index];
+              return value > 0.01; // Only show if > 0.01%
+            }
+            return true; // Default show if meta not found
+          },
         },
         display: true,
-        maxWidth: 120
+        maxWidth: 120,
       },
       tooltip: {
         callbacks: {
-          label: function(context) {
-            const label = context.label || '';
-            const value = context.raw.toFixed(2) || 0;
-            return `${label}: ${value}%`;
-          }
-        }
-      }
-    }
+          label: function (context) {
+            const label = context.label || "";
+            const value = context.raw;
+            // Ensure value is a number before calling toFixed
+            const formattedValue =
+              typeof value === "number" ? value.toFixed(2) : "N/A";
+            return `${label}: ${formattedValue}%`;
+          },
+        },
+      },
+    },
   };
+
+  // Determine which allocation/deviations to show in the main comparison table/charts
+  const displayAllocation =
+    (showWhatIfAnalysis && whatIfDirty) ||
+    showSellBuyRebalancing ||
+    (showBuyOnlyRebalancing &&
+      (recalculatedSuggestions.length > 0 ||
+        parseFloat(newInvestmentAmount || 0) > 0))
+      ? simulatedAllocation
+      : currentAllocation;
+  const displayDeviations =
+    (showWhatIfAnalysis && whatIfDirty) ||
+    showSellBuyRebalancing ||
+    (showBuyOnlyRebalancing &&
+      (recalculatedSuggestions.length > 0 ||
+        parseFloat(newInvestmentAmount || 0) > 0))
+      ? simulatedDeviations
+      : deviations;
+  const displayLabel =
+    showWhatIfAnalysis && whatIfDirty
+      ? "Simulated"
+      : showSellBuyRebalancing ||
+        (showBuyOnlyRebalancing &&
+          (recalculatedSuggestions.length > 0 ||
+            parseFloat(newInvestmentAmount || 0) > 0))
+      ? "Projected"
+      : "Current";
 
   return (
     <div>
@@ -1448,77 +1748,101 @@ const PortfolioComparison = ({
             <>
               {accounts.length === 0 ? (
                 <Alert variant="warning">
-                  You need to add accounts and positions to compare with your model portfolio.
+                  You need to add accounts and positions to compare with your
+                  model portfolio.
                 </Alert>
               ) : totalPortfolioValue === 0 ? (
                 <Alert variant="warning">
-                  Your current portfolio has no value. Please update stock prices or add positions.
+                  Your current portfolio has no value. Please update stock
+                  prices or add positions.
                 </Alert>
               ) : (
                 <>
                   <Row className="mb-4">
                     <Col>
-                      <div className="d-flex justify-content-between">
+                      <div className="d-flex justify-content-between flex-wrap gap-2">
+                        {" "}
+                        {/* Added flex-wrap and gap */}
                         <div>
-                          <Button 
+                          <Button
                             variant={showWhatIfAnalysis ? "secondary" : "info"}
                             size="sm"
                             onClick={() => {
                               setShowWhatIfAnalysis(!showWhatIfAnalysis);
-                              if (showBuyOnlyRebalancing) setShowBuyOnlyRebalancing(false);
-                              if (showSellBuyRebalancing) setShowSellBuyRebalancing(false);
+                              setShowSellBuyRebalancing(false);
+                              setShowBuyOnlyRebalancing(false);
+                              // Reset simulation if hiding
+                              if (showWhatIfAnalysis) resetSimulation();
                             }}
-                            className="me-2"
+                            className="me-2 mb-1" // Added margin bottom
                           >
-                            {showWhatIfAnalysis ? "Hide What-If Analysis" : "What-If Analysis"}
+                            {showWhatIfAnalysis
+                              ? "Hide What-If Analysis"
+                              : "What-If Analysis"}
                           </Button>
-                          <Button 
-                            variant={showSellBuyRebalancing ? "secondary" : "info"}
+                          <Button
+                            variant={
+                              showSellBuyRebalancing ? "secondary" : "info"
+                            }
                             size="sm"
                             onClick={() => {
-                              setShowSellBuyRebalancing(!showSellBuyRebalancing);
-                              if (showWhatIfAnalysis) setShowWhatIfAnalysis(false);
-                              if (showBuyOnlyRebalancing) setShowBuyOnlyRebalancing(false);
-                              if (!showSellBuyRebalancing) {
-                                setSimulatedAllocation(currentAllocation);
-                                setSimulatedDeviations(deviations);
-                              }
+                              setShowSellBuyRebalancing(
+                                !showSellBuyRebalancing
+                              );
+                              setShowWhatIfAnalysis(false);
+                              setShowBuyOnlyRebalancing(false);
+                              // Reset simulation if hiding or switching
+                              setSimulatedAllocation(currentAllocation);
+                              setSimulatedDeviations(deviations);
                             }}
-                            className="me-2"
+                            className="me-2 mb-1" // Added margin bottom
                           >
-                            {showSellBuyRebalancing ? "Hide Sell-Buy Rebalance" : "Sell-Buy Rebalance"}
+                            {showSellBuyRebalancing
+                              ? "Hide Sell-Buy Rebalance"
+                              : "Sell-Buy Rebalance"}
                           </Button>
-                          <Button 
-                            variant={showBuyOnlyRebalancing ? "secondary" : "info"}
+                          <Button
+                            variant={
+                              showBuyOnlyRebalancing ? "secondary" : "info"
+                            }
                             size="sm"
                             onClick={() => {
-                              setShowBuyOnlyRebalancing(!showBuyOnlyRebalancing);
-                              if (showWhatIfAnalysis) setShowWhatIfAnalysis(false);
-                              if (showSellBuyRebalancing) setShowSellBuyRebalancing(false);
-                              if (!showBuyOnlyRebalancing) {
-                                setNewInvestmentAmount('');
+                              setShowBuyOnlyRebalancing(
+                                !showBuyOnlyRebalancing
+                              );
+                              setShowWhatIfAnalysis(false);
+                              setShowSellBuyRebalancing(false);
+                              // Reset simulation and buy-only state if hiding
+                              if (showBuyOnlyRebalancing) {
+                                setNewInvestmentAmount("");
                                 setBuyOnlySuggestions([]);
-                              } else {
+                                setRecalculatedSuggestions([]);
+                                setBuyOnlyUnallocatedAmount(0);
+                                setSelectedTrades({});
                                 setSimulatedAllocation(currentAllocation);
                                 setSimulatedDeviations(deviations);
                               }
                             }}
+                            className="mb-1" // Added margin bottom
                           >
-                            {showBuyOnlyRebalancing ? "Hide Buy-Only Rebalancing" : "Buy-Only Rebalancing"}
+                            {showBuyOnlyRebalancing
+                              ? "Hide Buy-Only Rebalancing"
+                              : "Buy-Only Rebalancing"}
                           </Button>
                         </div>
                         <div>
-                          <Button 
-                            variant="outline-primary" 
-                            size="sm" 
-                            className="me-2"
+                          <Button
+                            variant="outline-primary"
+                            size="sm"
+                            className="me-2 mb-1" // Added margin bottom
                             onClick={prepareJsonExport}
                           >
                             Export to JSON
                           </Button>
-                          <Button 
-                            variant="outline-success" 
+                          <Button
+                            variant="outline-success"
                             size="sm"
+                            className="mb-1" // Added margin bottom
                             onClick={prepareCsvExport}
                           >
                             Export to CSV
@@ -1527,29 +1851,38 @@ const PortfolioComparison = ({
                       </div>
                     </Col>
                   </Row>
-                  
+
                   {showWhatIfAnalysis && (
                     <Card className="mb-4 bg-light">
                       <Card.Body>
                         <h5 className="mb-3">What-If Analysis</h5>
                         <p className="small">
-                          Simulate how buying or selling assets in specific categories would change your portfolio allocation.
+                          Simulate how buying or selling assets in specific
+                          categories would change your portfolio allocation.
                         </p>
+                        {/* What-If Input Rows */}
                         <Row>
                           <Col md={3}>
                             <Form.Group className="mb-3">
                               <Form.Label>Category</Form.Label>
                               <Form.Select
                                 value={currentTrade.category}
-                                onChange={(e) => setCurrentTrade(prev => ({ ...prev, category: e.target.value }))}
+                                onChange={(e) =>
+                                  setCurrentTrade((prev) => ({
+                                    ...prev,
+                                    category: e.target.value,
+                                  }))
+                                }
                               >
                                 <option value="">Select category</option>
-                                {categories.map(category => (
+                                {categories.map((category) => (
                                   <option key={category.id} value={category.id}>
                                     {category.name}
                                   </option>
                                 ))}
-                                <option value="uncategorized">Uncategorized</option>
+                                <option value="uncategorized">
+                                  Uncategorized
+                                </option>
                               </Form.Select>
                             </Form.Group>
                           </Col>
@@ -1558,7 +1891,12 @@ const PortfolioComparison = ({
                               <Form.Label>Action</Form.Label>
                               <Form.Select
                                 value={currentTrade.action}
-                                onChange={(e) => setCurrentTrade(prev => ({ ...prev, action: e.target.value }))}
+                                onChange={(e) =>
+                                  setCurrentTrade((prev) => ({
+                                    ...prev,
+                                    action: e.target.value,
+                                  }))
+                                }
                               >
                                 <option value="buy">Buy</option>
                                 <option value="sell">Sell</option>
@@ -1574,7 +1912,12 @@ const PortfolioComparison = ({
                                   type="number"
                                   placeholder="e.g., 10000"
                                   value={currentTrade.amount}
-                                  onChange={(e) => setCurrentTrade(prev => ({ ...prev, amount: e.target.value }))}
+                                  onChange={(e) =>
+                                    setCurrentTrade((prev) => ({
+                                      ...prev,
+                                      amount: e.target.value,
+                                    }))
+                                  }
                                   min="0"
                                   step="100"
                                 />
@@ -1582,44 +1925,50 @@ const PortfolioComparison = ({
                             </Form.Group>
                           </Col>
                           <Col md={3} className="d-flex align-items-end mb-3">
-                            <Button 
+                            <Button
                               variant="primary"
                               size="sm"
                               onClick={addTrade}
-                              disabled={!currentTrade.category || !currentTrade.amount}
+                              disabled={
+                                !currentTrade.category ||
+                                !currentTrade.amount ||
+                                parseFloat(currentTrade.amount) <= 0
+                              }
                               className="me-2"
                             >
                               Add Trade
                             </Button>
-                            <Button 
-                              variant="outline-secondary" 
+                            <Button
+                              variant="outline-secondary"
                               size="sm"
                               onClick={resetSimulation}
+                              disabled={whatIfTrades.length === 0}
                             >
                               Reset All
                             </Button>
                           </Col>
                         </Row>
 
+                        {/* Quick Add Buttons */}
                         <Row className="mb-3">
                           <Col>
                             <div className="d-flex gap-2">
-                              <Button 
-                                variant="outline-secondary" 
+                              <Button
+                                variant="outline-secondary"
                                 size="sm"
                                 onClick={() => quickAddAmount(10000)}
                               >
                                 +$10,000
                               </Button>
-                              <Button 
-                                variant="outline-secondary" 
+                              <Button
+                                variant="outline-secondary"
                                 size="sm"
                                 onClick={() => quickAddAmount(25000)}
                               >
                                 +$25,000
                               </Button>
-                              <Button 
-                                variant="outline-secondary" 
+                              <Button
+                                variant="outline-secondary"
                                 size="sm"
                                 onClick={() => quickAddAmount(100000)}
                               >
@@ -1629,6 +1978,7 @@ const PortfolioComparison = ({
                           </Col>
                         </Row>
 
+                        {/* Trades Table */}
                         {whatIfTrades.length > 0 && (
                           <div className="table-responsive mb-3">
                             <Table striped bordered hover size="sm">
@@ -1643,8 +1993,14 @@ const PortfolioComparison = ({
                               <tbody>
                                 {whatIfTrades.map((trade, index) => (
                                   <tr key={index}>
-                                    <td>{categories.find(c => c.id === trade.category)?.name || 'Uncategorized'}</td>
-                                    <td>{trade.action === 'buy' ? 'Buy' : 'Sell'}</td>
+                                    <td>
+                                      {categories.find(
+                                        (c) => c.id === trade.category
+                                      )?.name || "Uncategorized"}
+                                    </td>
+                                    <td>
+                                      {trade.action === "buy" ? "Buy" : "Sell"}
+                                    </td>
                                     <td>${formatNumber(trade.amount)}</td>
                                     <td>
                                       <Button
@@ -1657,6 +2013,8 @@ const PortfolioComparison = ({
                                     </td>
                                   </tr>
                                 ))}
+                                {/* Total Impact Row - Optional */}
+                                {/*
                                 <tr className="table-secondary">
                                   <td colSpan="2"><strong>Total Impact</strong></td>
                                   <td colSpan="2">
@@ -1670,35 +2028,50 @@ const PortfolioComparison = ({
                                     </strong>
                                   </td>
                                 </tr>
+                                */}
                               </tbody>
                             </Table>
                           </div>
                         )}
-                        
+
+                        {/* Simulation Result Alert */}
                         {whatIfDirty && (
                           <Alert variant="info">
-                            <strong>Simulation Result:</strong> Your portfolio would be $
+                            <strong>Simulation Result:</strong> See updated
+                            charts and table below. Projected total portfolio
+                            value: $
                             {formatNumber(
-                              totalPortfolioValue + whatIfTrades.reduce((sum, trade) => {
-                                const amount = parseFloat(trade.amount) || 0;
-                                return sum + (trade.action === 'buy' ? amount : -amount);
-                              }, 0)
+                              totalPortfolioValue +
+                                whatIfTrades.reduce((sum, trade) => {
+                                  const amount = parseFloat(trade.amount) || 0;
+                                  const isBuy = trade.action === "buy";
+                                  // More careful calculation considering selling limits
+                                  if (!isBuy) {
+                                    const catValue =
+                                      (currentAllocation[trade.category] /
+                                        100) *
+                                      totalPortfolioValue;
+                                    return sum - Math.min(amount, catValue);
+                                  }
+                                  return sum + amount;
+                                }, 0)
                             )}
-                            {' '}after applying all trades.
                           </Alert>
                         )}
                       </Card.Body>
                     </Card>
                   )}
-                  
+
                   {showSellBuyRebalancing && (
                     <Card className="mb-4 bg-light">
                       <Card.Body>
                         <h5 className="mb-3">Sell-Buy Rebalancing</h5>
                         <p className="small">
-                          This shows specific trades needed to rebalance your portfolio by selling overweight positions and buying underweight positions.
+                          This shows suggested trades to rebalance your
+                          portfolio by selling overweight positions and buying
+                          underweight positions. Results are simulated below.
                         </p>
-                        
+
                         {rebalanceActions.length > 0 ? (
                           <>
                             <div className="table-responsive">
@@ -1709,32 +2082,79 @@ const PortfolioComparison = ({
                                     <th>Action</th>
                                     <th>Shares</th>
                                     <th>Amount</th>
-                                    <th>Percentage</th>
+                                    {/* <th>Category Deviation</th> */}
                                   </tr>
                                 </thead>
                                 <tbody>
                                   {rebalanceActions.map((suggestion, index) => {
-                                    const symbol = suggestion.action.split(' ')[1];  // Extract symbol from "BUY AAPL" or "SELL AAPL"
-                                    const shares = symbol && stockPrices[symbol] 
-                                      ? Math.floor(suggestion.amount / stockPrices[symbol])
-                                      : 0;
-                                    
+                                    const symbol =
+                                      suggestion.action.split(" ")[1]; // Extract symbol
+                                    const price = stockPrices[symbol] || 0;
+                                    const shares =
+                                      price > 0
+                                        ? Math.floor(suggestion.amount / price)
+                                        : 0;
+
                                     return (
-                                      <tr key={index} className={suggestion.action.startsWith('SELL') ? 'table-danger' : 'table-success'}>
+                                      <tr
+                                        key={index}
+                                        className={
+                                          suggestion.action.startsWith("SELL")
+                                            ? "table-danger"
+                                            : "table-success"
+                                        }
+                                      >
                                         <td>{suggestion.category}</td>
                                         <td>{suggestion.action}</td>
-                                        <td>{shares}</td>
-                                        <td>${formatNumber(suggestion.amount)}</td>
-                                        <td>{suggestion.percent}%</td>
+                                        <td>{shares > 0 ? shares : "-"}</td>
+                                        <td>
+                                          ${formatNumber(suggestion.amount)}
+                                        </td>
+                                        {/* <td>{suggestion.percent}%</td> */}
                                       </tr>
                                     );
                                   })}
+                                  {/* Totals Row */}
                                   <tr className="table-secondary">
-                                    <td colSpan={3}><strong>Total Value</strong></td>
                                     <td colSpan={2}>
+                                      <strong>Total Sell Value</strong>
+                                    </td>
+                                    <td colSpan={2} className="text-end">
+                                      {" "}
+                                      {/* Align right */}
                                       <strong>
-                                        ${formatNumber(
-                                          rebalanceActions.reduce((sum, s) => sum + s.amount, 0)
+                                        $
+                                        {formatNumber(
+                                          rebalanceActions
+                                            .filter((s) =>
+                                              s.action.startsWith("SELL")
+                                            )
+                                            .reduce(
+                                              (sum, s) => sum + s.amount,
+                                              0
+                                            )
+                                        )}
+                                      </strong>
+                                    </td>
+                                  </tr>
+                                  <tr className="table-secondary">
+                                    <td colSpan={2}>
+                                      <strong>Total Buy Value</strong>
+                                    </td>
+                                    <td colSpan={2} className="text-end">
+                                      {" "}
+                                      {/* Align right */}
+                                      <strong>
+                                        $
+                                        {formatNumber(
+                                          rebalanceActions
+                                            .filter((s) =>
+                                              s.action.startsWith("BUY")
+                                            )
+                                            .reduce(
+                                              (sum, s) => sum + s.amount,
+                                              0
+                                            )
                                         )}
                                       </strong>
                                     </td>
@@ -1743,112 +2163,153 @@ const PortfolioComparison = ({
                               </Table>
                             </div>
                             <Alert variant="info" className="mt-3">
-                              <strong>Note:</strong> The suggestions above show specific trades that will help bring your portfolio closer to the target allocation. Sell trades are listed first, followed by buy trades.
+                              <strong>Note:</strong> These suggestions aim to
+                              bring your category allocations closer to the
+                              target. See the projected results below.
                             </Alert>
 
-                            <h5 className="mt-4 mb-3">Projected Portfolio After Rebalancing</h5>
-                            <p className="small">
-                              This shows how your portfolio would look after implementing all the suggested sell and buy trades above.
-                            </p>
-                            
+                            {/* Projected View for Sell-Buy */}
+                            <h5 className="mt-4 mb-3">
+                              Projected Portfolio After Sell-Buy Rebalancing
+                            </h5>
                             <Row>
                               <Col md={6}>
-                                <h6 className="text-center mb-3">Model Portfolio</h6>
+                                <h6 className="text-center mb-3">
+                                  Model Portfolio
+                                </h6>
                                 <div className="comparison-chart-container">
-                                  <Pie data={getChartData(modelAllocation, 'Model Allocation')} options={chartOptions} />
+                                  <Pie
+                                    data={getChartData(
+                                      modelAllocation,
+                                      "Model Allocation"
+                                    )}
+                                    options={chartOptions}
+                                  />
                                 </div>
                               </Col>
                               <Col md={6}>
-                                <h6 className="text-center mb-3">Projected Portfolio</h6>
+                                <h6 className="text-center mb-3">
+                                  Projected Portfolio
+                                </h6>
                                 <div className="comparison-chart-container">
-                                  <Pie 
-                                    data={getChartData(simulatedAllocation, 'Projected Allocation')} 
-                                    options={chartOptions} 
+                                  <Pie
+                                    data={getChartData(
+                                      simulatedAllocation,
+                                      "Projected Allocation"
+                                    )}
+                                    options={chartOptions}
                                   />
                                 </div>
                               </Col>
                             </Row>
-
-                            <h6 className="mt-4 mb-2">Projected Allocation Comparison</h6>
+                            <h6 className="mt-4 mb-2">
+                              Projected Allocation Comparison (Sell-Buy)
+                            </h6>
                             <div className="table-responsive">
-                              <Table striped bordered hover size="sm" className="comparison-table">
+                              <Table
+                                striped
+                                bordered
+                                hover
+                                size="sm"
+                                className="comparison-table"
+                              >
                                 <thead>
                                   <tr>
                                     <th>Category</th>
-                                    <th>Model Allocation</th>
-                                    <th>Current Allocation</th>
-                                    <th>Projected Allocation</th>
-                                    <th>Current Difference</th>
-                                    <th>Projected Difference</th>
+                                    <th>Model %</th>
+                                    <th>Current %</th>
+                                    <th>Projected %</th>
+                                    <th>Current Diff.</th>
+                                    <th>Projected Diff.</th>
                                     <th>Improvement</th>
                                   </tr>
                                 </thead>
                                 <tbody>
-                                  {categories.map(category => {
-                                    const modelAlloc = modelAllocation[category.id] || 0;
-                                    const currentAlloc = currentAllocation[category.id] || 0;
-                                    const projectedAlloc = simulatedAllocation[category.id] || 0;
-                                    const currentDiff = deviations[category.id] || 0;
-                                    const projectedDiff = simulatedDeviations[category.id] || 0;
-                                    const improvement = Math.abs(currentDiff) - Math.abs(projectedDiff);
-                                    const rowClass = Math.abs(projectedDiff) < Math.abs(currentDiff) ? 'table-success' : '';
+                                  {[
+                                    ...categories,
+                                    {
+                                      id: "uncategorized",
+                                      name: "Uncategorized",
+                                    },
+                                  ].map((category) => {
+                                    const modelAlloc =
+                                      modelAllocation[category.id] || 0;
+                                    const currentAlloc =
+                                      currentAllocation[category.id] || 0;
+                                    const projectedAlloc =
+                                      simulatedAllocation[category.id] || 0;
+                                    const currentDiff =
+                                      deviations[category.id] || 0;
+                                    const projectedDiff =
+                                      simulatedDeviations[category.id] || 0;
+                                    const improvement =
+                                      Math.abs(currentDiff) -
+                                      Math.abs(projectedDiff);
+                                    const rowClass =
+                                      Math.abs(projectedDiff) <
+                                      Math.abs(currentDiff)
+                                        ? "table-success"
+                                        : improvement < -0.01
+                                        ? "table-warning"
+                                        : "";
 
                                     return (
-                                      <tr key={category.id} className={rowClass}>
+                                      <tr
+                                        key={category.id}
+                                        className={rowClass}
+                                      >
                                         <td>{category.name}</td>
                                         <td>{formatNumber(modelAlloc)}%</td>
                                         <td>{formatNumber(currentAlloc)}%</td>
                                         <td>{formatNumber(projectedAlloc)}%</td>
-                                        <td>{currentDiff > 0 ? '+' : ''}{formatNumber(currentDiff)}%</td>
-                                        <td>{projectedDiff > 0 ? '+' : ''}{formatNumber(projectedDiff)}%</td>
-                                        <td className={improvement > 0 ? 'text-success' : (improvement < 0 ? 'text-danger' : '')}>
-                                          {improvement > 0 ? '+' : ''}{formatNumber(improvement)}%
+                                        <td>
+                                          {currentDiff >= 0 ? "+" : ""}
+                                          {formatNumber(currentDiff)}%
+                                        </td>
+                                        <td>
+                                          {projectedDiff >= 0 ? "+" : ""}
+                                          {formatNumber(projectedDiff)}%
+                                        </td>
+                                        <td
+                                          className={
+                                            improvement > 0.01
+                                              ? "text-success"
+                                              : improvement < -0.01
+                                              ? "text-danger"
+                                              : ""
+                                          }
+                                        >
+                                          {improvement >= 0 ? "+" : ""}
+                                          {formatNumber(improvement)}%
                                         </td>
                                       </tr>
                                     );
                                   })}
-                                  <tr className={Math.abs(simulatedDeviations['uncategorized'] || 0) < Math.abs(deviations['uncategorized'] || 0) ? 'table-success' : ''}>
-                                    <td>Uncategorized</td>
-                                    <td>{formatNumber(modelAllocation['uncategorized'] || 0)}%</td>
-                                    <td>{formatNumber(currentAllocation['uncategorized'] || 0)}%</td>
-                                    <td>{formatNumber(simulatedAllocation['uncategorized'] || 0)}%</td>
-                                    <td>
-                                      {(deviations['uncategorized'] || 0) > 0 ? '+' : ''}
-                                      {formatNumber(deviations['uncategorized'] || 0)}%
-                                    </td>
-                                    <td>
-                                      {(simulatedDeviations['uncategorized'] || 0) > 0 ? '+' : ''}
-                                      {formatNumber(simulatedDeviations['uncategorized'] || 0)}%
-                                    </td>
-                                    <td className={(Math.abs(deviations['uncategorized'] || 0) - Math.abs(simulatedDeviations['uncategorized'] || 0)) > 0 ? 'text-success' : 'text-danger'}>
-                                      {(Math.abs(deviations['uncategorized'] || 0) - Math.abs(simulatedDeviations['uncategorized'] || 0)) > 0 ? '+' : ''}
-                                      {formatNumber(Math.abs(deviations['uncategorized'] || 0) - Math.abs(simulatedDeviations['uncategorized'] || 0))}%
-                                    </td>
-                                  </tr>
                                 </tbody>
                               </Table>
                             </div>
                           </>
                         ) : (
                           <Alert variant="warning">
-                            No rebalancing suggestions could be generated. This may be because:
-                            <ul className="mb-0 mt-2">
-                              <li>Your portfolio is already well-balanced</li>
-                              <li>Stock price information is missing</li>
-                              <li>The deviations are too small to warrant trades</li>
-                            </ul>
+                            No significant sell/buy rebalancing suggestions
+                            generated. Your portfolio might be close to the
+                            target, or required trades are too small.
                           </Alert>
                         )}
                       </Card.Body>
                     </Card>
                   )}
-                  
+
                   {showBuyOnlyRebalancing && (
                     <Card className="mb-4 bg-light">
                       <Card.Body>
                         <h5 className="mb-3">Buy-Only Rebalancing</h5>
                         <p className="small">
-                          This strategy helps you rebalance toward your target allocation using only new money, without selling any positions.
+                          This strategy helps you rebalance toward your target
+                          allocation using only new money, without selling any
+                          positions. Funds are allocated to underweight
+                          categories/stocks, stopping if a category hits its
+                          target.
                         </p>
                         <Row className="align-items-end">
                           <Col md={6}>
@@ -1858,374 +2319,573 @@ const PortfolioComparison = ({
                                 <InputGroup.Text>$</InputGroup.Text>
                                 <Form.Control
                                   type="number"
-                                  placeholder="e.g., 10000"
+                                  placeholder="Enter amount or Calc Needed"
                                   value={newInvestmentAmount}
-                                  onChange={(e) => setNewInvestmentAmount(e.target.value)}
+                                  onChange={(e) =>
+                                    setNewInvestmentAmount(e.target.value)
+                                  }
                                   min="0"
                                   step="500"
                                 />
+                                {/* Add Button Here */}
+                                <Button
+                                  variant="outline-primary"
+                                  onClick={calculateInvestmentToTarget}
+                                  disabled={
+                                    isCalculatingNeeded ||
+                                    !selectedModelPortfolio
+                                  }
+                                  title="Calculate approximate amount needed to reach target %s for underweight categories"
+                                >
+                                  {isCalculatingNeeded
+                                    ? "Calculating..."
+                                    : "Calc Needed"}
+                                </Button>
                               </InputGroup>
                             </Form.Group>
                           </Col>
                           <Col md={6} className="mb-3">
-                            <div className="d-flex gap-2">
-                              <Button 
-                                variant="outline-secondary" 
+                            <div className="d-flex gap-2 flex-wrap">
+                              {" "}
+                              {/* Added flex-wrap */}
+                              <Button
+                                variant="outline-secondary"
                                 size="sm"
-                                onClick={() => setNewInvestmentAmount(
-                                  (parseFloat(newInvestmentAmount) || 0) + 10000
-                                )}
+                                onClick={() =>
+                                  setNewInvestmentAmount((prev) =>
+                                    String((parseFloat(prev) || 0) + 10000)
+                                  )
+                                }
                               >
                                 +$10,000
                               </Button>
-                              <Button 
-                                variant="outline-secondary" 
+                              <Button
+                                variant="outline-secondary"
                                 size="sm"
-                                onClick={() => setNewInvestmentAmount(
-                                  (parseFloat(newInvestmentAmount) || 0) + 25000
-                                )}
+                                onClick={() =>
+                                  setNewInvestmentAmount((prev) =>
+                                    String((parseFloat(prev) || 0) + 25000)
+                                  )
+                                }
                               >
                                 +$25,000
                               </Button>
-                              <Button 
-                                variant="outline-secondary" 
+                              <Button
+                                variant="outline-secondary"
                                 size="sm"
-                                onClick={() => setNewInvestmentAmount(
-                                  (parseFloat(newInvestmentAmount) || 0) + 100000
-                                )}
+                                onClick={() =>
+                                  setNewInvestmentAmount((prev) =>
+                                    String((parseFloat(prev) || 0) + 100000)
+                                  )
+                                }
                               >
                                 +$100,000
                               </Button>
-                              <Button 
-                                variant="outline-secondary" 
+                              <Button
+                                variant="outline-secondary"
                                 size="sm"
-                                onClick={() => setNewInvestmentAmount('')}
+                                onClick={() => setNewInvestmentAmount("")}
                               >
-                                Reset
+                                Reset Amount
                               </Button>
                             </div>
                           </Col>
                         </Row>
-                        
-                        {buyOnlySuggestions.length > 0 && (
-                          <>
-                            <p className="mb-3">
-                              <strong>Investment Distribution: </strong>
-                              Showing how to allocate ${formatNumber(newInvestmentAmount)} across underweight positions to move toward your target allocation.
-                              Select or deselect trades to see how different combinations affect your portfolio allocation.
-                            </p>
-                            <div className="d-flex justify-content-between mb-2">
-                              <div>
-                                <Button 
-                                  variant="outline-secondary" 
-                                  size="sm"
-                                  className="me-2"
-                                  onClick={() => {
-                                    const newSelectedTrades = {};
-                                    buyOnlySuggestions.forEach((_, index) => {
-                                      newSelectedTrades[index] = true;
-                                    });
-                                    setSelectedTrades(newSelectedTrades);
-                                    
-                                    const updatedSuggestions = updateSuggestionProjections(buyOnlySuggestions);
-                                    setRecalculatedSuggestions(updatedSuggestions);
-                                    recalculateProjectionsForSelectedTrades(updatedSuggestions);
-                                  }}
-                                >
-                                  Select All
-                                </Button>
-                                <Button 
-                                  variant="outline-secondary" 
-                                  size="sm"
-                                  onClick={() => {
-                                    setSelectedTrades({});
-                                    setRecalculatedSuggestions([]);
-                                    
-                                    setSimulatedAllocation(currentAllocation);
-                                    setSimulatedDeviations(deviations);
-                                  }}
-                                >
-                                  Deselect All
-                                </Button>
-                              </div>
-                            </div>
-                            <div className="table-responsive">
-                              <Table striped bordered hover size="sm">
-                                <thead>
-                                  <tr>
-                                    <th>Include</th>
-                                    <th>Symbol</th>
-                                    <th>Category</th>
-                                    <th>Shares to Buy</th>
-                                    <th>Investment</th>
-                                    <th>% of New Money</th>
-                                    <th>Current %</th>
-                                    <th>Target %</th>
-                                    <th>Deviation</th>
-                                    <th>Projected %</th>
-                                    <th>Projected Deviation</th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {buyOnlySuggestions.map((suggestion, index) => {
-                                    // Find corresponding recalculated suggestion
-                                    const recalculated = selectedTrades[index] 
-                                      ? recalculatedSuggestions.find(s => s.symbol === suggestion.symbol)
-                                      : null;
-                                      
-                                    return (
-                                      <tr key={index} className={selectedTrades[index] ? '' : 'table-secondary'}>
-                                        <td>
-                                          <Form.Check
-                                            type="checkbox"
-                                            checked={selectedTrades[index] || false}
-                                            onChange={(e) => handleTradeSelectionChange(index, e.target.checked)}
-                                            aria-label={`Select trade for ${suggestion.symbol}`}
-                                          />
-                                        </td>
-                                        <td>
-                                          <strong>{suggestion.symbol}</strong>
-                                        </td>
-                                        <td>{suggestion.category}</td>
-                                        <td>{selectedTrades[index] ? (recalculated ? recalculated.shares : suggestion.shares) : "-"}</td>
-                                        <td>{selectedTrades[index] ? `$${recalculated ? formatNumber(recalculated.value) : formatNumber(suggestion.value)}` : "-"}</td>
-                                        <td>{selectedTrades[index] ? `${recalculated ? recalculated.allocationPercent : suggestion.allocationPercent}%` : "-"}</td>
-                                        <td>{suggestion.currentPercentage}%</td>
-                                        <td>{suggestion.targetPercentage}%</td>
-                                        <td className={parseFloat(suggestion.deviation) < 0 ? 'text-danger' : 'text-success'}>
-                                          {suggestion.deviation}%
-                                        </td>
-                                        <td>
-                                          {selectedTrades[index] ? (
-                                            recalculated ? recalculated.projectedPercentage : suggestion.projectedPercentage
-                                          ) : (
-                                            suggestion.currentPercentage
-                                          )}%
-                                        </td>
-                                        <td>
-                                          {selectedTrades[index] ? (
-                                            <Badge 
-                                              bg={parseFloat(recalculated ? recalculated.projectedDeviation : suggestion.projectedDeviation) > 0 ? "warning" : "info"}
-                                            >
-                                              {parseFloat(recalculated ? recalculated.projectedDeviation : suggestion.projectedDeviation) > 0 ? "+" : ""}
-                                              {recalculated ? recalculated.projectedDeviation : suggestion.projectedDeviation}%
-                                            </Badge>
-                                          ) : (
-                                            <Badge 
-                                              bg={parseFloat(suggestion.deviation) > 0 ? "warning" : "info"}
-                                            >
-                                              {suggestion.deviation}%
-                                            </Badge>
-                                          )}
-                                        </td>
-                                      </tr>
-                                    );
-                                  })}
-                                  <tr className="table-secondary">
-                                    <td colSpan={3}><strong>Selected Total</strong></td>
-                                    <td>
-                                      <strong>
-                                        ${formatNumber(
-                                          recalculatedSuggestions.reduce((sum, s) => sum + parseFloat(s.value), 0)
-                                        )}
-                                      </strong>
-                                    </td>
-                                    <td>
-                                      <strong>
-                                        {formatNumber(
-                                          recalculatedSuggestions.reduce((sum, s) => sum + parseFloat(s.allocationPercent), 0)
-                                        )}%
-                                      </strong>
-                                    </td>
-                                    <td colSpan={6}></td>
-                                  </tr>
-                                </tbody>
-                              </Table>
-                            </div>
-                            {recalculatedSuggestions.reduce((sum, s) => sum + parseFloat(s.value), 0) < parseFloat(newInvestmentAmount) && (
-                              <Alert variant="info" className="mt-3">
-                                <strong>Note:</strong> ${formatNumber(parseFloat(newInvestmentAmount) - recalculatedSuggestions.reduce((sum, s) => sum + parseFloat(s.value), 0))} of your investment amount is unused based on your selected trades.
-                              </Alert>
-                            )}
-                            
-                            {recalculatedSuggestions.length > 0 && 
-                             Object.values(selectedTrades).includes(false) && 
-                             Math.abs(recalculatedSuggestions.reduce((sum, s) => sum + parseFloat(s.value), 0) - parseFloat(newInvestmentAmount)) < 1 && (
-                              <Alert variant="success" className="mt-3">
-                                <strong>Reallocation:</strong> The investment amount has been automatically reallocated among your selected trades to maximize portfolio balance.
-                              </Alert>
-                            )}
-                            
-                            <h5 className="mt-4 mb-3">Projected Portfolio After Rebalancing</h5>
-                            <p className="small">
-                              This shows how your portfolio would look after implementing the buy-only rebalancing strategy with ${formatNumber(newInvestmentAmount)} in new investments.
-                            </p>
-                            
-                            <Row>
-                              <Col md={6}>
-                                <h6 className="text-center mb-3">Model Portfolio</h6>
-                                <div className="comparison-chart-container">
-                                  <Pie data={getChartData(modelAllocation, 'Model Allocation')} options={chartOptions} />
-                                </div>
-                              </Col>
-                              <Col md={6}>
-                                <h6 className="text-center mb-3">Projected Portfolio</h6>
-                                <div className="comparison-chart-container">
-                                  <Pie 
-                                    data={getChartData(simulatedAllocation, 'Projected Allocation')} 
-                                    options={chartOptions} 
-                                  />
-                                </div>
-                              </Col>
-                            </Row>
-                            
-                            <h6 className="mt-4 mb-2">Projected Allocation Comparison</h6>
-                            <div className="table-responsive">
-                              <Table striped bordered hover size="sm" className="comparison-table">
-                                <thead>
-                                  <tr>
-                                    <th>Category</th>
-                                    <th>Model Allocation</th>
-                                    <th>Current Allocation</th>
-                                    <th>Projected Allocation</th>
-                                    <th>Current Difference</th>
-                                    <th>Projected Difference</th>
-                                    <th>Improvement</th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {categories.map(category => {
-                                    const modelAlloc = modelAllocation[category.id] || 0;
-                                    const currentAlloc = currentAllocation[category.id] || 0;
-                                    const projectedAlloc = simulatedAllocation[category.id] || 0;
-                                    const currentDiff = deviations[category.id] || 0;
-                                    const projectedDiff = simulatedDeviations[category.id] || 0;
-                                    const improvement = Math.abs(currentDiff) - Math.abs(projectedDiff);
-                                    const rowClass = Math.abs(projectedDiff) < Math.abs(currentDiff) ? 'table-success' : '';
 
-                                    return (
-                                      <tr key={category.id} className={rowClass}>
-                                        <td>{category.name}</td>
-                                        <td>{formatNumber(modelAlloc)}%</td>
-                                        <td>{formatNumber(currentAlloc)}%</td>
-                                        <td>{formatNumber(projectedAlloc)}%</td>
-                                        <td>{currentDiff > 0 ? '+' : ''}{formatNumber(currentDiff)}%</td>
-                                        <td>{projectedDiff > 0 ? '+' : ''}{formatNumber(projectedDiff)}%</td>
-                                        <td className={improvement > 0 ? 'text-success' : (improvement < 0 ? 'text-danger' : '')}>
-                                          {improvement > 0 ? '+' : ''}{formatNumber(improvement)}%
-                                        </td>
+                        {/* Only show table section if amount is entered */}
+                        {parseFloat(newInvestmentAmount || 0) > 0 ? (
+                          <>
+                            {buyOnlySuggestions.length > 0 ? (
+                              <>
+                                <p className="mb-3">
+                                  <strong>Investment Distribution: </strong>
+                                  Showing how to allocate $
+                                  {formatNumber(newInvestmentAmount)} across
+                                  underweight positions. $
+                                  {formatNumber(buyOnlyUnallocatedAmount)} may
+                                  be unallocated if adding it would overweight
+                                  categories. Select/deselect trades to see
+                                  projected impact.
+                                </p>
+                                <div className="d-flex justify-content-between mb-2 flex-wrap gap-2">
+                                  {" "}
+                                  {/* Added wrap + gap */}
+                                  <div>
+                                    <Button
+                                      variant="outline-secondary"
+                                      size="sm"
+                                      className="me-2"
+                                      onClick={() => {
+                                        const newSelectedTrades = {};
+                                        buyOnlySuggestions.forEach(
+                                          (_, index) => {
+                                            newSelectedTrades[index] = true;
+                                          }
+                                        );
+                                        setSelectedTrades(newSelectedTrades);
+                                        // Trigger recalculation with all suggestions
+                                        recalculateProjectionsForSelectedTrades(
+                                          buyOnlySuggestions
+                                        );
+                                      }}
+                                      disabled={buyOnlySuggestions.length === 0}
+                                    >
+                                      Select All
+                                    </Button>
+                                    <Button
+                                      variant="outline-secondary"
+                                      size="sm"
+                                      onClick={() => {
+                                        setSelectedTrades({});
+                                        setRecalculatedSuggestions([]);
+                                        // Recalculate projections for empty set (resets to current)
+                                        recalculateProjectionsForSelectedTrades(
+                                          []
+                                        );
+                                      }}
+                                      disabled={
+                                        recalculatedSuggestions.length === 0
+                                      }
+                                    >
+                                      Deselect All
+                                    </Button>
+                                  </div>
+                                  {/* Unallocated Amount Display */}
+                                  {buyOnlyUnallocatedAmount > 1 && (
+                                    <Badge bg="info" className="p-2">
+                                      Unallocated: $
+                                      {formatNumber(buyOnlyUnallocatedAmount)}
+                                    </Badge>
+                                  )}
+                                </div>
+                                <div className="table-responsive">
+                                  <Table striped bordered hover size="sm">
+                                    <thead>
+                                      <tr>
+                                        <th>Include</th>
+                                        <th>Symbol</th>
+                                        <th>Category</th>
+                                        <th>Shares</th>
+                                        <th>Investment</th>
+                                        <th>% of New $</th>
+                                        <th>Current %</th>
+                                        <th>Target %</th>
+                                        <th>Deviation</th>
+                                        <th>Projected %</th>
+                                        <th>Projected Dev.</th>
                                       </tr>
-                                    );
-                                  })}
-                                  <tr className={Math.abs(simulatedDeviations['uncategorized'] || 0) < Math.abs(deviations['uncategorized'] || 0) ? 'table-success' : ''}>
-                                    <td>Uncategorized</td>
-                                    <td>{formatNumber(modelAllocation['uncategorized'] || 0)}%</td>
-                                    <td>{formatNumber(currentAllocation['uncategorized'] || 0)}%</td>
-                                    <td>{formatNumber(simulatedAllocation['uncategorized'] || 0)}%</td>
-                                    <td>
-                                      {(deviations['uncategorized'] || 0) > 0 ? '+' : ''}
-                                      {formatNumber(deviations['uncategorized'] || 0)}%
-                                    </td>
-                                    <td>
-                                      {(simulatedDeviations['uncategorized'] || 0) > 0 ? '+' : ''}
-                                      {formatNumber(simulatedDeviations['uncategorized'] || 0)}%
-                                    </td>
-                                    <td className={(Math.abs(deviations['uncategorized'] || 0) - Math.abs(simulatedDeviations['uncategorized'] || 0)) > 0 ? 'text-success' : 'text-danger'}>
-                                      {(Math.abs(deviations['uncategorized'] || 0) - Math.abs(simulatedDeviations['uncategorized'] || 0)) > 0 ? '+' : ''}
-                                      {formatNumber(Math.abs(deviations['uncategorized'] || 0) - Math.abs(simulatedDeviations['uncategorized'] || 0))}%
-                                    </td>
-                                  </tr>
-                                </tbody>
-                              </Table>
-                            </div>
+                                    </thead>
+                                    <tbody>
+                                      {/* Map over the ORIGINAL suggestions to always show all rows */}
+                                      {buyOnlySuggestions.length > 0 ? (
+                                        buyOnlySuggestions.map(
+                                          (suggestion, index) => {
+                                            // Check if this original suggestion is currently selected
+                                            const isSelected = selectedTrades[index] || false;
+
+                                            // Find the corresponding data in recalculatedSuggestions IF it's selected
+                                            // This contains the updated projection values based on the current selection set
+                                            const projectedData = isSelected
+                                              ? recalculatedSuggestions.find(
+                                                  (recalcSuggestion) =>
+                                                    // Match based on symbol and original value/shares for better uniqueness
+                                                    recalcSuggestion.symbol === suggestion.symbol &&
+                                                    recalcSuggestion.shares === suggestion.shares &&
+                                                    recalcSuggestion.value === suggestion.value
+                                                )
+                                              : null;
+
+                                            // Use projected data if available, otherwise fallback or show '-'
+                                            const displayProjectedPerc = projectedData ? projectedData.projectedPercentage : '-';
+                                            const displayProjectedDev = projectedData ? projectedData.projectedDeviation : '-';
+                                            const displayAllocationPerc = projectedData ? projectedData.allocationPercent : '0.0'; // Show 0% if deselected
+
+                                            return (
+                                              <tr key={index} className={!isSelected ? 'table-light text-muted' : ''}>
+                                                <td>
+                                                  <Form.Check
+                                                    type="checkbox"
+                                                    checked={isSelected}
+                                                    onChange={(e) =>
+                                                      handleTradeSelectionChange(
+                                                        index, // Use the original index
+                                                        e.target.checked
+                                                      )
+                                                    }
+                                                    aria-label={`Select trade for ${suggestion.symbol}`}
+                                                  />
+                                                </td>
+                                                <td>
+                                                  <strong>
+                                                    {suggestion.symbol}
+                                                  </strong>
+                                                </td>
+                                                <td>{suggestion.category}</td>
+                                                {/* Display original suggestion data */}
+                                                <td>{suggestion.shares}</td>
+                                                <td className="text-end">
+                                                  ${formatNumber(suggestion.value)}
+                                                </td>
+                                                {/* Display allocation % based on selection */}
+                                                <td className="text-end">
+                                                  {displayAllocationPerc}%
+                                                </td>
+                                                {/* Display original current/target/deviation */}
+                                                <td className="text-end">
+                                                  {suggestion.currentPercentage}%
+                                                </td>
+                                                <td className="text-end">
+                                                  {suggestion.targetPercentage}%
+                                                </td>
+                                                <td
+                                                  className={`text-end ${
+                                                    !isSelected ? '' : // Only color if selected
+                                                    parseFloat(suggestion.deviation) < 0
+                                                      ? "text-danger"
+                                                      : "text-success"
+                                                  }`}
+                                                >
+                                                  {suggestion.deviation}%
+                                                </td>
+                                                {/* Use updated projection values if selected, else '-' */}
+                                                <td className="text-end">
+                                                  {displayProjectedPerc}{displayProjectedPerc !== '-' ? '%' : ''}
+                                                </td>
+                                                <td className="text-end">
+                                                  {displayProjectedDev !== '-' ? (
+                                                    <Badge
+                                                      bg={
+                                                        Math.abs(parseFloat(displayProjectedDev)) < 0.1
+                                                          ? "success"
+                                                          : parseFloat(displayProjectedDev) > 0
+                                                          ? "warning text-dark"
+                                                          : "info"
+                                                      }
+                                                      pill
+                                                    >
+                                                      {parseFloat(displayProjectedDev) >= 0 ? "+" : ""}
+                                                      {displayProjectedDev}%
+                                                    </Badge>
+                                                  ) : (
+                                                    '-' // Show dash if not selected/projected
+                                                  )}
+                                                </td>
+                                              </tr>
+                                            );
+                                          }
+                                        )
+                                      ) : (
+                                        <tr>
+                                          <td
+                                            colSpan="11"
+                                            className="text-center"
+                                          >
+                                            {/* Adjust message based on whether amount was entered */}
+                                            {parseFloat(newInvestmentAmount || 0) > 0
+                                              ? "No suggestions generated for this amount."
+                                              : "Enter an investment amount."}
+                                          </td>
+                                        </tr>
+                                      )}
+                                      {/* Total Row - Ensure this still sums correctly based on recalculatedSuggestions */}
+                                      {recalculatedSuggestions.length > 0 && ( // Only show total if something is selected
+                                        <tr className="table-secondary">
+                                          <td colSpan={3}>
+                                            <strong>Selected Total</strong>
+                                          </td>
+                                          <td>{/* Sum shares if needed */}</td>
+                                          <td className="text-end">
+                                            <strong>
+                                              $
+                                              {formatNumber(
+                                                recalculatedSuggestions.reduce(
+                                                  (sum, s) =>
+                                                    sum + parseFloat(s.value),
+                                                  0
+                                                )
+                                              )}
+                                            </strong>
+                                          </td>
+                                          <td className="text-end">
+                                            <strong>
+                                              {/* Recalculate % of *original* amount based on selected */}
+                                              {formatNumber(
+                                                parseFloat(newInvestmentAmount) >
+                                                  0
+                                                  ? (recalculatedSuggestions.reduce(
+                                                      (sum, s) =>
+                                                        sum + parseFloat(s.value),
+                                                      0
+                                                    ) /
+                                                      parseFloat(
+                                                        newInvestmentAmount
+                                                      )) *
+                                                      100
+                                                  : 0
+                                              )}
+                                              %
+                                            </strong>
+                                          </td>
+                                          <td colSpan={5}></td>
+                                        </tr>
+                                      )}
+                                    </tbody>
+                                  </Table>
+                                </div>
+                              </>
+                            ) : (
+                              <Alert variant="warning" className="mt-3">
+                                No buy suggestions could be generated for this
+                                amount. Possible reasons: portfolio is balanced,
+                                amount is too small, or missing price data for
+                                underweight stocks. $
+                                {formatNumber(buyOnlyUnallocatedAmount)} is
+                                unallocated.
+                              </Alert>
+                            )}
+
+                            {/* Projected View for Buy-Only */}
+                            {/* Only show projection if there was an investment amount and EITHER suggestions or unallocated amount > 0 */}
+                            {(buyOnlySuggestions.length > 0 ||
+                              buyOnlyUnallocatedAmount > 0) && (
+                              <>
+                                <h5 className="mt-4 mb-3">
+                                  Projected Portfolio After Buy-Only Rebalancing
+                                </h5>
+                                <Row>
+                                  <Col md={6}>
+                                    <h6 className="text-center mb-3">
+                                      Model Portfolio
+                                    </h6>
+                                    <div className="comparison-chart-container">
+                                      <Pie
+                                        data={getChartData(
+                                          modelAllocation,
+                                          "Model Allocation"
+                                        )}
+                                        options={chartOptions}
+                                      />
+                                    </div>
+                                  </Col>
+                                  <Col md={6}>
+                                    <h6 className="text-center mb-3">
+                                      Projected Portfolio
+                                    </h6>
+                                    <div className="comparison-chart-container">
+                                      <Pie
+                                        data={getChartData(
+                                          simulatedAllocation,
+                                          "Projected Allocation"
+                                        )}
+                                        options={chartOptions}
+                                      />
+                                    </div>
+                                  </Col>
+                                </Row>
+                                <h6 className="mt-4 mb-2">
+                                  Projected Allocation Comparison (Buy-Only)
+                                </h6>
+                                <div className="table-responsive">
+                                  <Table
+                                    striped
+                                    bordered
+                                    hover
+                                    size="sm"
+                                    className="comparison-table"
+                                  >
+                                    <thead>
+                                      <tr>
+                                        <th>Category</th>
+                                        <th>Model %</th>
+                                        <th>Current %</th>
+                                        <th>Projected %</th>
+                                        <th>Current Diff.</th>
+                                        <th>Projected Diff.</th>
+                                        <th>Improvement</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {[
+                                        ...categories,
+                                        {
+                                          id: "uncategorized",
+                                          name: "Uncategorized",
+                                        },
+                                      ].map((category) => {
+                                        const modelAlloc =
+                                          modelAllocation[category.id] || 0;
+                                        const currentAlloc =
+                                          currentAllocation[category.id] || 0;
+                                        const projectedAlloc =
+                                          simulatedAllocation[category.id] || 0;
+                                        const currentDiff =
+                                          deviations[category.id] || 0;
+                                        const projectedDiff =
+                                          simulatedDeviations[category.id] || 0;
+                                        const improvement =
+                                          Math.abs(currentDiff) -
+                                          Math.abs(projectedDiff);
+                                        // Highlight rows where projection is closer to target than current
+                                        const rowClass =
+                                          Math.abs(projectedDiff) <
+                                          Math.abs(currentDiff) - 0.01
+                                            ? "table-success"
+                                            : improvement < -0.01
+                                            ? "table-warning"
+                                            : "";
+
+                                        return (
+                                          <tr
+                                            key={category.id}
+                                            className={rowClass}
+                                          >
+                                            <td>{category.name}</td>
+                                            <td className="text-end">
+                                              {formatNumber(modelAlloc)}%
+                                            </td>
+                                            <td className="text-end">
+                                              {formatNumber(currentAlloc)}%
+                                            </td>
+                                            <td className="text-end">
+                                              {formatNumber(projectedAlloc)}%
+                                            </td>
+                                            <td className="text-end">
+                                              {currentDiff >= 0 ? "+" : ""}
+                                              {formatNumber(currentDiff)}%
+                                            </td>
+                                            <td className="text-end">
+                                              {projectedDiff >= 0 ? "+" : ""}
+                                              {formatNumber(projectedDiff)}%
+                                            </td>
+                                            <td
+                                              className={`text-end ${
+                                                improvement > 0.01
+                                                  ? "text-success"
+                                                  : improvement < -0.01
+                                                  ? "text-danger"
+                                                  : ""
+                                              }`}
+                                            >
+                                              {improvement >= 0 ? "+" : ""}
+                                              {formatNumber(improvement)}%
+                                            </td>
+                                          </tr>
+                                        );
+                                      })}
+                                    </tbody>
+                                  </Table>
+                                </div>
+                              </>
+                            )}
                           </>
-                        )}
-                        
-                        {newInvestmentAmount && buyOnlySuggestions.length === 0 && (
-                          <Alert variant="warning">
-                            No buy-only rebalancing suggestions could be generated. This may be because:
-                            <ul className="mb-0 mt-2">
-                              <li>Your portfolio is already well-balanced</li>
-                              <li>The investment amount is too small to purchase any shares</li>
-                              <li>Stock price information is missing for underweight assets</li>
-                            </ul>
+                        ) : (
+                          <Alert variant="secondary" className="mt-3">
+                            Enter a new investment amount or use "Calc Needed"
+                            to see buy-only suggestions.
                           </Alert>
                         )}
                       </Card.Body>
                     </Card>
                   )}
-                
+
+                  {/* Main Comparison Charts & Table */}
                   <Row>
                     <Col md={6}>
                       <h5 className="text-center mb-3">Model Portfolio</h5>
                       <div className="comparison-chart-container">
-                        <Pie data={getChartData(modelAllocation, 'Model Allocation')} options={chartOptions} />
+                        <Pie
+                          data={getChartData(
+                            modelAllocation,
+                            "Model Allocation"
+                          )}
+                          options={chartOptions}
+                        />
                       </div>
                     </Col>
                     <Col md={6}>
-                      <h5 className="text-center mb-3">{whatIfDirty ? 'Simulated Portfolio' : 'Current Portfolio'}</h5>
+                      <h5 className="text-center mb-3">
+                        {displayLabel} Portfolio
+                      </h5>
                       <div className="comparison-chart-container">
-                        <Pie 
+                        <Pie
                           data={getChartData(
-                            whatIfDirty ? simulatedAllocation : currentAllocation, 
-                            whatIfDirty ? 'Simulated Allocation' : 'Current Allocation'
-                          )} 
-                          options={chartOptions} 
+                            displayAllocation,
+                            `${displayLabel} Allocation`
+                          )}
+                          options={chartOptions}
                         />
                       </div>
                     </Col>
                   </Row>
 
-                  <h5 className="mt-4 mb-3">Allocation Comparison</h5>
+                  <h5 className="mt-4 mb-3">
+                    {displayLabel} Allocation Comparison
+                  </h5>
                   <div className="table-responsive">
                     <Table striped bordered hover className="comparison-table">
                       <thead>
                         <tr>
                           <th>Category</th>
-                          <th>Model Allocation</th>
-                          <th>{whatIfDirty ? 'Current' : 'Current'} Allocation</th>
-                          {whatIfDirty && <th>Simulated Allocation</th>}
-                          <th>{whatIfDirty ? 'Current Difference' : 'Difference'}</th>
-                          {whatIfDirty && <th>Simulated Difference</th>}
+                          <th>Model %</th>
+                          {/* Show Current always, unless it's the same as display */}
+                          {displayAllocation !== currentAllocation && (
+                            <th>Current %</th>
+                          )}
+                          <th>{displayLabel} %</th>
+                          {/* Show Current Diff always? */}
+                          <th>Current Diff.</th>
+                          {/* Only show displayDiff if different from current diff */}
+                          {displayDeviations !== deviations && (
+                            <th>{displayLabel} Diff.</th>
+                          )}
                         </tr>
                       </thead>
                       <tbody>
-                        {categories.map(category => {
+                        {[
+                          ...categories,
+                          { id: "uncategorized", name: "Uncategorized" },
+                        ].map((category) => {
                           const modelAlloc = modelAllocation[category.id] || 0;
-                          const currentAlloc = currentAllocation[category.id] || 0;
-                          const simulatedAlloc = simulatedAllocation[category.id] || 0;
-                          const diff = deviations[category.id] || 0;
-                          const simDiff = simulatedDeviations[category.id] || 0;
-                          const rowClass = Math.abs(diff) > 5 ? (diff > 0 ? 'table-danger' : 'table-success') : '';
-                          const simRowClass = whatIfDirty && Math.abs(simDiff) < Math.abs(diff) ? 'table-success' : '';
+                          const currentAlloc =
+                            currentAllocation[category.id] || 0;
+                          const dispAlloc = displayAllocation[category.id] || 0;
+                          const currentDiff = deviations[category.id] || 0;
+                          const dispDiff = displayDeviations[category.id] || 0;
+                          // Highlight based on the displayed difference
+                          const rowClass =
+                            Math.abs(dispDiff) > 5
+                              ? dispDiff > 0
+                                ? "table-warning"
+                                : "table-info"
+                              : "";
 
                           return (
-                            <tr key={category.id} className={whatIfDirty ? simRowClass : rowClass}>
+                            <tr key={category.id} className={rowClass}>
                               <td>{category.name}</td>
-                              <td>{formatNumber(modelAlloc)}%</td>
-                              <td>{formatNumber(currentAlloc)}%</td>
-                              {whatIfDirty && <td>{formatNumber(simulatedAlloc)}%</td>}
-                              <td>{diff > 0 ? '+' : ''}{formatNumber(diff)}%</td>
-                              {whatIfDirty && <td>{simDiff > 0 ? '+' : ''}{formatNumber(simDiff)}%</td>}
+                              <td className="text-end">
+                                {formatNumber(modelAlloc)}%
+                              </td>
+                              {displayAllocation !== currentAllocation && (
+                                <td className="text-end">
+                                  {formatNumber(currentAlloc)}%
+                                </td>
+                              )}
+                              <td className="text-end">
+                                {formatNumber(dispAlloc)}%
+                              </td>
+                              <td className="text-end">
+                                {currentDiff >= 0 ? "+" : ""}
+                                {formatNumber(currentDiff)}%
+                              </td>
+                              {displayDeviations !== deviations && (
+                                <td className="text-end">
+                                  {dispDiff >= 0 ? "+" : ""}
+                                  {formatNumber(dispDiff)}%
+                                </td>
+                              )}
                             </tr>
                           );
                         })}
-                        <tr className={Math.abs(simulatedDeviations['uncategorized'] || 0) < Math.abs(deviations['uncategorized'] || 0) ? 'table-success' : ''}>
-                          <td>Uncategorized</td>
-                          <td>{formatNumber(modelAllocation['uncategorized'] || 0)}%</td>
-                          <td>{formatNumber(currentAllocation['uncategorized'] || 0)}%</td>
-                          {whatIfDirty && <td>{formatNumber(simulatedAllocation['uncategorized'] || 0)}%</td>}
-                          <td>
-                            {(deviations['uncategorized'] || 0) > 0 ? '+' : ''}
-                            {formatNumber(deviations['uncategorized'] || 0)}%
-                          </td>
-                          {whatIfDirty && (
-                            <td>
-                              {(simulatedDeviations['uncategorized'] || 0) > 0 ? '+' : ''}
-                              {formatNumber(simulatedDeviations['uncategorized'] || 0)}%
-                            </td>
-                          )}
-                        </tr>
                       </tbody>
                     </Table>
                   </div>
@@ -2234,21 +2894,30 @@ const PortfolioComparison = ({
             </>
           ) : (
             <Alert variant="info">
-              Please select a model portfolio to compare with your current holdings.
+              Please select a model portfolio to compare with your current
+              holdings.
             </Alert>
           )}
         </Card.Body>
       </Card>
 
       {/* JSON Export Modal */}
-      <Modal show={showJsonModal} onHide={() => setShowJsonModal(false)} size="lg">
+      <Modal
+        show={showJsonModal}
+        onHide={() => setShowJsonModal(false)}
+        size="lg"
+      >
         <Modal.Header closeButton>
           <Modal.Title>JSON Export Preview</Modal.Title>
         </Modal.Header>
         <Modal.Body>
-          <div style={{ maxHeight: '60vh', overflow: 'auto' }}>
-            <pre style={{ whiteSpace: 'pre-wrap' }}>
-              {jsonExportData ? JSON.stringify(jsonExportData, null, 2) : ''}
+          <div style={{ maxHeight: "60vh", overflow: "auto" }}>
+            <pre style={{ whiteSpace: "pre-wrap", wordBreak: "break-all" }}>
+              {" "}
+              {/* Added wordBreak */}
+              {jsonExportData
+                ? JSON.stringify(jsonExportData, null, 2)
+                : "Loading..."}
             </pre>
           </div>
         </Modal.Body>
@@ -2256,37 +2925,66 @@ const PortfolioComparison = ({
           <Button variant="secondary" onClick={() => setShowJsonModal(false)}>
             Close
           </Button>
-          <Button variant="primary" onClick={downloadJson}>
+          <Button
+            variant="primary"
+            onClick={downloadJson}
+            disabled={!jsonExportData}
+          >
             Download JSON
           </Button>
         </Modal.Footer>
       </Modal>
 
       {/* CSV Export Modal */}
-      <Modal show={showCsvModal} onHide={() => setShowCsvModal(false)} size="lg">
+      <Modal
+        show={showCsvModal}
+        onHide={() => setShowCsvModal(false)}
+        size="lg"
+      >
         <Modal.Header closeButton>
           <Modal.Title>CSV Export Preview</Modal.Title>
         </Modal.Header>
         <Modal.Body>
-          <div style={{ maxHeight: '60vh', overflow: 'auto' }}>
-            <Table striped bordered hover size="sm">
-              <tbody>
-                {csvExportData?.split('\n').map((row, index) => (
-                  <tr key={index}>
-                    {row.split(',').map((cell, cellIndex) => (
-                      <td key={cellIndex}>{cell.replace(/"/g, '')}</td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </Table>
+          <div style={{ maxHeight: "60vh", overflow: "auto" }}>
+            {/* Comment out the raw preformatted view
+            <pre style={{ whiteSpace: "pre", overflowX: "auto" }}>
+              {csvExportData || "Loading..."}
+            </pre>
+            */}
+            {/* Render CSV data as a table */}
+            {csvExportData ? (
+              <Table striped bordered hover size="sm">
+                <tbody>
+                  {csvExportData.split('\n').map((row, rowIndex) => (
+                    <tr key={rowIndex}>
+                      {row.split(',').map((cell, cellIndex) => {
+                        // Basic unquoting: remove leading/trailing double quotes
+                        const cellContent = cell.replace(/^"(.*)"$/, '$1');
+                        // Use <th> for the first row (header)
+                        return rowIndex === 0 ? (
+                          <th key={cellIndex}>{cellContent}</th>
+                        ) : (
+                          <td key={cellIndex}>{cellContent}</td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </Table>
+            ) : (
+              "Loading..." // Show loading text if data isn't ready
+            )}
           </div>
         </Modal.Body>
         <Modal.Footer>
           <Button variant="secondary" onClick={() => setShowCsvModal(false)}>
             Close
           </Button>
-          <Button variant="primary" onClick={downloadCsv}>
+          <Button
+            variant="primary"
+            onClick={downloadCsv}
+            disabled={!csvExportData}
+          >
             Download CSV
           </Button>
         </Modal.Footer>
