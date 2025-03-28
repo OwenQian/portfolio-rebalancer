@@ -2851,13 +2851,27 @@ const PortfolioComparison = ({
                           const dispAlloc = displayAllocation[category.id] || 0;
                           const currentDiff = deviations[category.id] || 0;
                           const dispDiff = displayDeviations[category.id] || 0;
-                          // Highlight based on the displayed difference
-                          const rowClass =
-                            Math.abs(dispDiff) > 5
-                              ? dispDiff > 0
-                                ? "table-warning"
-                                : "table-info"
-                              : "";
+
+                          // Calculate improvement for What-If scenario
+                          const improvement = Math.abs(currentDiff) - Math.abs(dispDiff);
+
+                          // Determine row class based on mode and improvement
+                          let rowClass = "";
+                          if (showWhatIfAnalysis && whatIfDirty) {
+                            // What-If Mode: Color based on improvement
+                            if (improvement > 0.01) { // Improved (closer to target)
+                              rowClass = "table-success";
+                            } else if (improvement < -0.01) { // Worsened (further from target)
+                              rowClass = "table-danger";
+                            }
+                            // No significant change or already at target, no specific color needed here
+                            // unless you want to keep the old warning/info logic as a fallback
+                          } else {
+                            // Default Mode (or other modes): Highlight based on the displayed difference magnitude
+                            if (Math.abs(dispDiff) > 5) {
+                              rowClass = dispDiff > 0 ? "table-warning" : "table-info";
+                            }
+                          }
 
                           return (
                             <tr key={category.id} className={rowClass}>
