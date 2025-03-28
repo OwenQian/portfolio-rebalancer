@@ -1581,7 +1581,65 @@ const PortfolioComparison = ({
       csvRows.push(`Net Cash Flow:,${(totalSell - totalBuy).toFixed(2)}`);
 
       csvContent = csvRows.join("\n");
-    } else {
+    } else if (showWhatIfAnalysis) { // <-- START: Add What-If condition
+        if (whatIfTrades.length > 0) {
+            exportMode = "whatIf";
+            const csvRows = [];
+
+            // Section 1: Simulated Trades
+            csvRows.push("Simulated Trades");
+            csvRows.push("Category,Action,Amount ($)");
+            whatIfTrades.forEach(trade => {
+                const categoryName = categories.find(c => c.id === trade.category)?.name || "Uncategorized";
+                csvRows.push([
+                    `"${categoryName}"`,
+                    trade.action === 'buy' ? 'Buy' : 'Sell',
+                    parseFloat(trade.amount || 0).toFixed(2)
+                ].join(','));
+            });
+
+            // Section 2: Allocation Comparison
+            csvRows.push(""); // Blank line separator
+            csvRows.push("Allocation Comparison");
+            csvRows.push("Category,Model %,Current %,Simulated %,Current Diff.,Simulated Diff.");
+
+            const allCategoryIds = new Set([
+                ...categories.map(c => c.id),
+                'uncategorized',
+                ...Object.keys(modelAllocation),
+                ...Object.keys(currentAllocation),
+                ...Object.keys(simulatedAllocation)
+            ]);
+
+            allCategoryIds.forEach(catId => {
+                const categoryName = categories.find(c => c.id === catId)?.name || "Uncategorized";
+                const modelPerc = modelAllocation[catId] || 0;
+                const currentPerc = currentAllocation[catId] || 0;
+                const simulatedPerc = simulatedAllocation[catId] || 0;
+                const currentDiff = deviations[catId] || 0;
+                const simulatedDiff = simulatedDeviations[catId] || 0;
+
+                // Only include rows with some relevance (e.g., non-zero in any column)
+                if (modelPerc > 0.01 || currentPerc > 0.01 || simulatedPerc > 0.01) {
+                    csvRows.push([
+                        `"${categoryName}"`,
+                        `${modelPerc.toFixed(2)}%`,
+                        `${currentPerc.toFixed(2)}%`,
+                        `${simulatedPerc.toFixed(2)}%`,
+                        `${currentDiff >= 0 ? '+' : ''}${currentDiff.toFixed(2)}%`,
+                        `${simulatedDiff >= 0 ? '+' : ''}${simulatedDiff.toFixed(2)}%`
+                    ].join(','));
+                }
+            });
+
+            csvContent = csvRows.join("\n");
+
+                          } else {
+            // Handle case where What-If is active but no trades added
+            alert("No 'What-If' trades have been added to export.");
+            return; // Stop export process
+        }
+    } else { // <-- END: Add What-If condition (existing else block follows)
       // Default: Export specific stock suggestions if no mode is active or suggestions exist
       const specificSuggestions = memoizedGenerateSpecificSuggestions();
       if (specificSuggestions.length > 0) {
