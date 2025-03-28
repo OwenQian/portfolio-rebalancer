@@ -2088,6 +2088,32 @@ const PortfolioComparison = ({
                                 </tr>
                                 */}
                               </tbody>
+                              {/* START: Add Net Portfolio Change Footer */}
+                              <tfoot>
+                                <tr className="table-secondary">
+                                  <td colSpan="2">
+                                    <strong>Net Portfolio Change</strong>
+                                  </td>
+                                  <td colSpan="2">
+                                    <strong>
+                                      $
+                                      {formatNumber(
+                                        whatIfTrades.reduce((sum, trade) => {
+                                          const amount =
+                                            parseFloat(trade.amount) || 0;
+                                          return (
+                                            sum +
+                                            (trade.action === "buy"
+                                              ? amount
+                                              : -amount)
+                                          );
+                                        }, 0)
+                                      )}
+                                    </strong>
+                                  </td>
+                                </tr>
+                              </tfoot>
+                              {/* END: Add Net Portfolio Change Footer */}
                             </Table>
                           </div>
                         )}
