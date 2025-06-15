@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(rg -n \"useEffect|tempPrices.*stockPrices|stockPrices.*tempPrices\" src/components/CurrentPortfolio.js)"
+    ],
+    "deny": []
+  }
+}

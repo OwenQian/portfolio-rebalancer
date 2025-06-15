@@ -52,6 +52,12 @@ const CurrentPortfolio = ({
     setExpandedAccounts([]);
   }, [accounts.length]);
 
+  // Sync tempPrices and tempCategories with parent component updates
+  useEffect(() => {
+    setTempPrices({...stockPrices});
+    setTempCategories({...stockCategories});
+  }, [stockPrices, stockCategories]);
+
   const getAllUniqueStockSymbols = () => {
     const symbols = new Set();
     
