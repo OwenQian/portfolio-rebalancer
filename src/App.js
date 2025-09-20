@@ -12,6 +12,7 @@ import PortfolioComparison from './components/PortfolioComparison';
 import CategoryManager from './components/CategoryManager';
 import AllocationChart from './components/AllocationChart';
 import AggregatedAllocationChart from './components/AggregatedAllocationChart';
+import StorageSettings from './components/StorageSettings';
 
 // Import File Storage Utils
 import { 
@@ -19,7 +20,10 @@ import {
   loadDataFromFile, 
   fileBackupExists,
   exportDataBackup,
-  importDataBackup
+  importDataBackup,
+  setStorageConfig,
+  getStorageConfig,
+  STORAGE_TYPES
 } from './utils/fileStorage';
 
 function App() {
@@ -32,7 +36,13 @@ function App() {
   // State to store current positions/accounts
   const [accounts, setAccounts] = useState(() => {
     const savedAccounts = localStorage.getItem('accounts');
-    return savedAccounts ? JSON.parse(savedAccounts) : [];
+    const loadedAccounts = savedAccounts ? JSON.parse(savedAccounts) : [];
+    
+    // Ensure all accounts have marginBalance property (migration for existing data)
+    return loadedAccounts.map(account => ({
+      ...account,
+      marginBalance: account.marginBalance || 0
+    }));
   });
 
   // State to store asset categories
@@ -61,10 +71,9 @@ function App() {
     return savedPrices ? JSON.parse(savedPrices) : {};
   });
 
-  // State for API key
+  // State for API key - now read from environment variable
   const [marketstackApiKey, setMarketstackApiKey] = useState(() => {
-    const savedApiKey = localStorage.getItem('marketstackApiKey');
-    return savedApiKey || '';
+    return process.env.REACT_APP_MARKET_STACK_API_KEY || '';
   });
 
   // State for API loading status
@@ -89,6 +98,9 @@ function App() {
   const [exportFormat, setExportFormat] = useState('json');
   const [exportStatus, setExportStatus] = useState('');
   const [exportDataType, setExportDataType] = useState('all');
+
+  // State for storage settings modal
+  const [showStorageSettings, setShowStorageSettings] = useState(false);
 
   // Validate imported data structure
   const validateImportedData = (data) => {
@@ -135,11 +147,17 @@ function App() {
   const importPortfolioData = useCallback((data) => {
     // Update all the state with loaded data
     setModelPortfolios(data.modelPortfolios || []);
-    setAccounts(data.accounts || []);
+    
+    // Ensure imported accounts have marginBalance property (migration)
+    const migratedAccounts = (data.accounts || []).map(account => ({
+      ...account,
+      marginBalance: account.marginBalance || 0
+    }));
+    setAccounts(migratedAccounts);
+    
     setCategories(data.categories || []);
     setStockCategories(data.stockCategories || {});
     setStockPrices(data.stockPrices || {});
-    setMarketstackApiKey(data.marketstackApiKey || '');
     
     // Fix dates and ensure portfolio history data is properly preserved
     let portfolioHistory = data.portfolioValueHistory || [];
@@ -159,7 +177,7 @@ function App() {
     }
     
     setPortfolioValueHistory(portfolioHistory);
-  }, [setModelPortfolios, setAccounts, setCategories, setStockCategories, setStockPrices, setMarketstackApiKey, setPortfolioValueHistory]);
+  }, [setModelPortfolios, setAccounts, setCategories, setStockCategories, setStockPrices, setPortfolioValueHistory]);
   
   // Function to handle restore from file - wrapped in useCallback
   const handleRestoreFromFile = useCallback(async () => {
@@ -202,6 +220,35 @@ function App() {
       setIsUsingFileStorage(false); // Disable file storage after error
     }
   }, [isUsingFileStorage, importPortfolioData]);
+
+  // Load storage configuration on startup
+  useEffect(() => {
+    try {
+      const savedStorageConfig = localStorage.getItem('storageConfig');
+      if (savedStorageConfig) {
+        const config = JSON.parse(savedStorageConfig);
+        setStorageConfig(config);
+        console.log('Loaded storage configuration:', config);
+      }
+    } catch (error) {
+      console.error('Error loading storage configuration:', error);
+    }
+  }, []);
+
+  // Handle storage configuration changes
+  const handleStorageChange = (config) => {
+    try {
+      localStorage.setItem('storageConfig', JSON.stringify(config));
+      setStorageConfig(config);
+      console.log('Updated storage configuration:', config);
+      
+      // Re-check file storage availability with new config
+      setIsUsingFileStorage(false);
+      // The next useEffect will re-run the file storage check
+    } catch (error) {
+      console.error('Error saving storage configuration:', error);
+    }
+  };
 
   // Check if file storage is available - initialize only once
   useEffect(() => {
@@ -262,9 +309,6 @@ function App() {
     localStorage.setItem('stockPrices', JSON.stringify(stockPrices));
   }, [stockPrices]);
 
-  useEffect(() => {
-    localStorage.setItem('marketstackApiKey', marketstackApiKey);
-  }, [marketstackApiKey]);
 
   useEffect(() => {
     localStorage.setItem('portfolioValueHistory', JSON.stringify(portfolioValueHistory));
@@ -305,7 +349,6 @@ function App() {
             categories,
             stockCategories,
             stockPrices,
-            marketstackApiKey,
             portfolioValueHistory: normalizedHistory
           };
           
@@ -319,7 +362,7 @@ function App() {
     };
     
     saveData();
-  }, [modelPortfolios, accounts, categories, stockCategories, stockPrices, marketstackApiKey, portfolioValueHistory, isUsingFileStorage]);
+  }, [modelPortfolios, accounts, categories, stockCategories, stockPrices, portfolioValueHistory, isUsingFileStorage]);
 
   // Function to update stock prices using Marketstack API
   const updateStockPrices = async (manualPrices = null, selectedSymbols = null, snapshotOnly = false, snapshotValue = null) => {
@@ -450,9 +493,10 @@ function App() {
     }
   };
 
-  // Function to update API key
+  // Function to update API key - now read-only from environment variable
   const updateApiKey = (newKey) => {
-    setMarketstackApiKey(newKey);
+    console.warn('API key is now read from environment variable and cannot be updated at runtime');
+    // No-op since API key is now read from environment variable
   };
   
   // Function to handle backup to file
@@ -482,7 +526,6 @@ function App() {
         categories,
         stockCategories,
         stockPrices,
-        marketstackApiKey,
         portfolioValueHistory: normalizedHistory,
         backupDate: new Date().toISOString()
       };
@@ -932,11 +975,13 @@ function App() {
   // Make calculateTotalPortfolioValue available for JSX
   const calculateTotalPortfolioValue = (accountsList, priceData) => {
     return accountsList.reduce((total, account) => {
+      // Subtract margin balance from account total (margin is borrowed money)
+      const marginBalance = account.marginBalance || 0;
       const accountTotal = account.positions.reduce((accTotal, position) => {
         const price = priceData[position.symbol] || 0;
         return accTotal + (price * position.shares);
       }, 0);
-      return total + accountTotal;
+      return total + accountTotal - marginBalance;
     }, 0).toFixed(2);
   };
 
@@ -984,6 +1029,16 @@ function App() {
           >
             Export Data
           </Button>
+          {isUsingFileStorage && (
+            <Button 
+              variant="outline-secondary" 
+              size="sm" 
+              className="ms-2"
+              onClick={() => setShowStorageSettings(true)}
+            >
+              Storage Settings
+            </Button>
+          )}
         </div>
         
         <Tabs defaultActiveKey="current" className="mb-4">
@@ -1146,6 +1201,13 @@ function App() {
         </Modal.Header>
         <Modal.Body>
           <p>Create a backup file of all your portfolio data.</p>
+          {isUsingFileStorage && (
+            <div className="alert alert-info">
+              <strong>Storage Location:</strong> {getStorageConfig().type === STORAGE_TYPES.ICLOUD ? 'iCloud Drive' : 
+                getStorageConfig().type === STORAGE_TYPES.GOOGLE_DRIVE ? 'Google Drive' :
+                getStorageConfig().type === STORAGE_TYPES.CUSTOM ? 'Custom folder' : 'Local storage'}
+            </div>
+          )}
           <p>This will save your:</p>
           <ul>
             <li>Model portfolios</li>
@@ -1178,6 +1240,13 @@ function App() {
         </Modal.Header>
         <Modal.Body>
           <p>Restore your portfolio data from a backup file or paste JSON directly.</p>
+          {isUsingFileStorage && (
+            <div className="alert alert-info">
+              <strong>Storage Location:</strong> {getStorageConfig().type === STORAGE_TYPES.ICLOUD ? 'iCloud Drive' : 
+                getStorageConfig().type === STORAGE_TYPES.GOOGLE_DRIVE ? 'Google Drive' :
+                getStorageConfig().type === STORAGE_TYPES.CUSTOM ? 'Custom folder' : 'Local storage'}
+            </div>
+          )}
           <p><strong>Warning:</strong> This will replace all your current data.</p>
           {restoreStatus && (
             <div className="alert alert-info mt-3">
@@ -1205,6 +1274,13 @@ function App() {
           </Button>
         </Modal.Footer>
       </Modal>
+
+      {/* Storage Settings Modal */}
+      <StorageSettings 
+        show={showStorageSettings}
+        onHide={() => setShowStorageSettings(false)}
+        onStorageChange={handleStorageChange}
+      />
     </div>
   );
 }

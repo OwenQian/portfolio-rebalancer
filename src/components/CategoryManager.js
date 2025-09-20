@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Card, Button, Table, Form, Row, Col, Modal, Badge } from 'react-bootstrap';
+import { Card, Button, Table, Form, Row, Col, Modal } from 'react-bootstrap';
 
 const CategoryManager = ({ categories, setCategories, stockCategories, setStockCategories }) => {
   const [showAddModal, setShowAddModal] = useState(false);

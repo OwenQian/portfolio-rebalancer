@@ -241,7 +241,6 @@ describe('File Storage and Backup Functionality', () => {
         categories: ['Stocks', 'Bonds'],
         stockCategories: {},
         stockPrices: {},
-        marketstackApiKey: 'test-key',
         portfolioValueHistory: []
       };
       

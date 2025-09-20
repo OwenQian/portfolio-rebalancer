@@ -88,7 +88,6 @@ const samplePortfolioData = {
     'GOOG': 140.3,
     'AMZN': 175.8
   },
-  marketstackApiKey: 'test-api-key',
   portfolioValueHistory: [
     { date: '2023-01-01T00:00:00.000Z', value: 5000, source: 'manual' },
     { date: '2023-02-01T00:00:00.000Z', value: 5500, source: 'auto' },

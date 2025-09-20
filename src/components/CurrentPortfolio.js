@@ -25,7 +25,7 @@ const CurrentPortfolio = ({
   const [showSnapshotModal, setShowSnapshotModal] = useState(false);
   const [showSyncPricesModal, setShowSyncPricesModal] = useState(false);
   const [selectedStocksToSync, setSelectedStocksToSync] = useState({});
-  const [tempApiKey, setTempApiKey] = useState(marketstackApiKey || '');
+  // API key is now read-only from environment variable
   const [newAccountName, setNewAccountName] = useState('');
   const [selectedAccount, setSelectedAccount] = useState(null);
   const [newSymbol, setNewSymbol] = useState('');
@@ -235,7 +235,7 @@ const CurrentPortfolio = ({
       initialSelectedStocks[symbol] = true;
     });
     setSelectedStocksToSync(initialSelectedStocks);
-    setTempApiKey(marketstackApiKey || '');
+    // API key is now read from environment
     setShowSyncPricesModal(true);
   };
 
@@ -246,10 +246,8 @@ const CurrentPortfolio = ({
       return;
     }
     
-    // Save API key if changed
-    if (tempApiKey !== marketstackApiKey) {
-      updateApiKey(tempApiKey);
-    }
+    // API key is now read-only from environment variable
+    // No need to update it
     
     updateStockPrices(null, selectedSymbols);
     setShowSyncPricesModal(false);
@@ -292,7 +290,8 @@ const CurrentPortfolio = ({
     const newAccount = {
       id: Date.now().toString(),
       name: newAccountName,
-      positions: []
+      positions: [],
+      marginBalance: 0
     };
 
     setAccounts([...accounts, newAccount]);
@@ -450,15 +449,31 @@ const CurrentPortfolio = ({
     setAccounts(updatedAccounts);
   };
 
+  const handleUpdateMarginBalance = (accountId, marginBalance) => {
+    const updatedAccounts = accounts.map(account => {
+      if (account.id === accountId) {
+        return {
+          ...account,
+          marginBalance: marginBalance
+        };
+      }
+      return account;
+    });
+
+    setAccounts(updatedAccounts);
+  };
+
   const calculatePositionValue = (symbol, shares) => {
     const price = editingAssets ? tempPrices[symbol] || 0 : stockPrices[symbol] || 0;
     return (price * shares).toFixed(2);
   };
 
   const calculateAccountTotal = (account) => {
-    return account.positions.reduce((total, position) => {
+    const positionsTotal = account.positions.reduce((total, position) => {
       return total + parseFloat(calculatePositionValue(position.symbol, position.shares));
-    }, 0).toFixed(2);
+    }, 0);
+    const marginBalance = account.marginBalance || 0;
+    return (positionsTotal - marginBalance).toFixed(2);
   };
 
   const calculatePortfolioTotal = () => {
@@ -995,6 +1010,29 @@ const CurrentPortfolio = ({
                     </div>
                   </Accordion.Header>
                   <Accordion.Body>
+                    <div className="mb-3">
+                      <div className="row mb-2">
+                        <div className="col-md-6">
+                          <label className="form-label">Margin Balance:</label>
+                          <div className="input-group input-group-sm">
+                            <span className="input-group-text">$</span>
+                            <input
+                              type="number"
+                              className="form-control"
+                              value={account.marginBalance || 0}
+                              onChange={(e) => handleUpdateMarginBalance(account.id, Math.max(0, parseFloat(e.target.value) || 0))}
+                              placeholder="0.00"
+                              step="0.01"
+                              min="0"
+                            />
+                          </div>
+                          <small className="text-muted">
+                            Amount borrowed on margin (automatically reduces net account value)
+                          </small>
+                        </div>
+                      </div>
+                    </div>
+
                     <div className="mb-3 d-flex justify-content-between">
                       <Button variant="success" size="sm" onClick={() => handleAddPosition(account)}>
                         Add Position
@@ -1068,7 +1106,23 @@ const CurrentPortfolio = ({
                           </tbody>
                           <tfoot>
                             <tr>
-                              <th colSpan="4" className="text-end">Total:</th>
+                              <th colSpan="4" className="text-end">Positions Total:</th>
+                              <th>{formatDollarAmount(account.positions.reduce((total, position) => {
+                                return total + parseFloat(calculatePositionValue(position.symbol, position.shares));
+                              }, 0).toFixed(2))}</th>
+                              <th></th>
+                            </tr>
+                            {(account.marginBalance && account.marginBalance !== 0) && (
+                              <tr>
+                                <th colSpan="4" className="text-end">Margin Balance (-):</th>
+                                <th className="text-danger">
+                                  {formatDollarAmount(account.marginBalance)}
+                                </th>
+                                <th></th>
+                              </tr>
+                            )}
+                            <tr>
+                              <th colSpan="4" className="text-end">Net Account Total:</th>
                               <th>{formatDollarAmount(calculateAccountTotal(account))}</th>
                               <th></th>
                             </tr>
@@ -1389,13 +1443,14 @@ const CurrentPortfolio = ({
               <Form.Group className="mb-0">
                 <Form.Label>Marketstack API Key</Form.Label>
                 <Form.Control
-                  type="text"
-                  placeholder="Enter your Marketstack API key"
-                  value={tempApiKey}
-                  onChange={(e) => setTempApiKey(e.target.value)}
+                  type="password"
+                  placeholder="API key loaded from environment"
+                  value={marketstackApiKey ? '••••••••••••••••••••••••••••••••' : 'No API key found'}
+                  readOnly
+                  style={{ backgroundColor: '#f8f9fa' }}
                 />
                 <Form.Text className="text-muted">
-                  Your API key will be stored locally in your browser. You can get a free API key by signing up at <a href="https://marketstack.com" target="_blank" rel="noopener noreferrer">marketstack.com</a>
+                  API key is loaded from the .env file (REACT_APP_MARKET_STACK_API_KEY). To change it, update your .env file and restart the app.
                 </Form.Text>
               </Form.Group>
             </Card.Body>

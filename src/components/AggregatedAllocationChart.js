@@ -9,14 +9,14 @@ ChartJS.register(ArcElement, Tooltip, Legend);
 
 const AggregatedAllocationChart = ({ accounts, categories, stockCategories, stockPrices, showHeader = true }) => {
   // Generate colors for the grouped categories
-  const generateColors = (count) => {
-    const colors = [];
-    for (let i = 0; i < count; i++) {
-      const hue = (i * 137) % 360; // Use golden angle approximation for good distribution
-      colors.push(`hsl(${hue}, 70%, 60%)`);
-    }
-    return colors;
-  };
+  // const generateColors = (count) => {
+  //   const colors = [];
+  //   for (let i = 0; i < count; i++) {
+  //     const hue = (i * 137) % 360; // Use golden angle approximation for good distribution
+  //     colors.push(`hsl(${hue}, 70%, 60%)`);
+  //   }
+  //   return colors;
+  // }; // Commented out unused function
 
   // Calculate allocation by category
   const calculateAllocationByCategory = () => {

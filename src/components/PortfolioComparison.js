@@ -13,7 +13,7 @@ import {
 } from "react-bootstrap";
 import { Pie } from "react-chartjs-2";
 import { Chart as ChartJS, ArcElement, Tooltip, Legend } from "chart.js";
-import { formatDollarAmount, formatNumber } from "../utils/formatters";
+import { formatNumber } from "../utils/formatters";
 
 // Register ChartJS components
 ChartJS.register(ArcElement, Tooltip, Legend);
@@ -33,15 +33,10 @@ const PortfolioComparison = ({
   const [simulatedDeviations, setSimulatedDeviations] = useState({});
   const [rebalanceActions, setRebalanceActions] = useState([]);
   const [totalPortfolioValue, setTotalPortfolioValue] = useState(0);
-  const [specificRebalancingSuggestions, setSpecificRebalancingSuggestions] =
-    useState([]);
-  const [showSpecificSuggestions] = useState(false);
+  // Removed unused specific rebalancing suggestions state
 
   // What-if analysis states
   const [showWhatIfAnalysis, setShowWhatIfAnalysis] = useState(false);
-  const [whatIfCategory, setWhatIfCategory] = useState("");
-  const [whatIfAction, setWhatIfAction] = useState("buy");
-  const [whatIfAmount, setWhatIfAmount] = useState("");
   const [whatIfDirty, setWhatIfDirty] = useState(false);
   const [whatIfTrades, setWhatIfTrades] = useState([]);
   const [currentTrade, setCurrentTrade] = useState({
@@ -703,27 +698,32 @@ const PortfolioComparison = ({
     let iteration = 0;
     // Increase MAX_ITERATIONS slightly, but it should finish much faster now
     const MAX_ITERATIONS = uniqueCandidates.length * 5 + 20; // e.g., 4*5+20 = 40
-    let safetyBreak = false;
+    // let safetyBreak = false; // Removed unused variable
+
+    // Define sorting function outside the loop to avoid linting warning
+    const sortCandidates = () => {
+      uniqueCandidates.sort((a, b) => {
+        const currentTotalVal = currentTotalValueDynamic > 0 ? currentTotalValueDynamic : 1;
+        const catDevA = ((projectedCategoryValues[a.categoryId]||0) / currentTotalVal * 100) - a.modelCategoryPercentage;
+        const catDevB = ((projectedCategoryValues[b.categoryId]||0) / currentTotalVal * 100) - b.modelCategoryPercentage;
+        if (Math.abs(catDevA - catDevB) > 0.01) { return catDevA - catDevB; }
+        const currentProjValA = (currentStockValues[a.symbol]?.value || 0) + (allocationResults[a.symbol]?.value || 0);
+        const currentProjValB = (currentStockValues[b.symbol]?.value || 0) + (allocationResults[b.symbol]?.value || 0);
+        const stockPercentageA = currentTotalVal > 0 ? (currentProjValA / currentTotalVal * 100) : 0;
+        const stockPercentageB = currentTotalVal > 0 ? (currentProjValB / currentTotalVal * 100) : 0;
+        const stockDevA = stockPercentageA - a.modelStockPercentage;
+        const stockDevB = stockPercentageB - b.modelStockPercentage;
+        return stockDevA - stockDevB;
+      });
+    };
 
     console.log("[BuyOnly] --- Starting Efficient Allocation Loop ---");
     while (remainingInvestment > 1 && uniqueCandidates.length > 0 && iteration < MAX_ITERATIONS) {
         iteration++;
-        let allocatedInLoop = false;
+        // let allocatedInLoop = false; // Removed unused variable
 
         // 1. Sort candidates to find the highest priority
-         uniqueCandidates.sort((a, b) => { /* ... same sorting logic ... */
-             const currentTotalVal = currentTotalValueDynamic > 0 ? currentTotalValueDynamic : 1;
-             const catDevA = ((projectedCategoryValues[a.categoryId]||0) / currentTotalVal * 100) - a.modelCategoryPercentage;
-             const catDevB = ((projectedCategoryValues[b.categoryId]||0) / currentTotalVal * 100) - b.modelCategoryPercentage;
-             if (Math.abs(catDevA - catDevB) > 0.01) { return catDevA - catDevB; }
-             const currentProjValA = (currentStockValues[a.symbol]?.value || 0) + (allocationResults[a.symbol]?.value || 0);
-             const currentProjValB = (currentStockValues[b.symbol]?.value || 0) + (allocationResults[b.symbol]?.value || 0);
-             const stockPercentageA = currentTotalVal > 0 ? (currentProjValA / currentTotalVal * 100) : 0;
-             const stockPercentageB = currentTotalVal > 0 ? (currentProjValB / currentTotalVal * 100) : 0;
-             const stockDevA = stockPercentageA - a.modelStockPercentage;
-             const stockDevB = stockPercentageB - b.modelStockPercentage;
-             return stockDevA - stockDevB;
-         });
+        sortCandidates();
 
          // 2. Process the highest priority candidate
          const candidate = uniqueCandidates[0];
@@ -801,7 +801,7 @@ const PortfolioComparison = ({
                  allocationResults[symbol].shares += sharesToBuy;
                  allocationResults[symbol].value += investmentThisStep;
 
-                 allocatedInLoop = true;
+                 // allocatedInLoop = true; // Removed unused variable
                  // Don't break loop, let while loop condition handle next iteration (re-sort needed)
              } else {
                  console.log(`[BuyOnly Loop ${iteration}] ---> NO ${symbol}: Buying ${sharesToBuy} shares would exceed category limit (${percentAfterBuy.toFixed(2)}% > ${modelCategoryPercentage}%). Removing candidate.`);
@@ -819,8 +819,8 @@ const PortfolioComparison = ({
     } // End while loop
 
     console.log("[BuyOnly] --- Efficient Allocation Loop END ---");
-    if (iteration >= MAX_ITERATIONS) { console.warn("[BuyOnly] Efficient Allocation loop reached max iterations."); safetyBreak = true; }
-    if (uniqueCandidates.length == 0 && remainingInvestment > 1) { console.log("[BuyOnly] Ran out of candidates with funds remaining."); }
+    if (iteration >= MAX_ITERATIONS) { console.warn("[BuyOnly] Efficient Allocation loop reached max iterations."); }
+    if (uniqueCandidates.length === 0 && remainingInvestment > 1) { console.log("[BuyOnly] Ran out of candidates with funds remaining."); }
 
 
     // --- Format Suggestions (same as before) ---
@@ -922,6 +922,7 @@ const PortfolioComparison = ({
         });
 
         // Apply all sell trades first (they affect the total value available for buys)
+        // eslint-disable-next-line no-unused-vars
         let cashFromSales = 0;
         suggestions.forEach((suggestion) => {
           if (suggestion.action.startsWith("SELL")) {
@@ -936,12 +937,13 @@ const PortfolioComparison = ({
             const actualSellAmount = Math.min(amount, currentCatValue); // Don't sell more than exists
             categoryValues[categoryId] = currentCatValue - actualSellAmount;
             newTotalValue -= actualSellAmount;
+            // Track cash from sales for potential future use
             cashFromSales += actualSellAmount;
           }
         });
 
         // Then apply all buy trades using cash from sales (or assuming external funding if buys > sells)
-        let cashForBuys = cashFromSales; // Simplification: assume buys are funded by sells
+        // let cashForBuys = cashFromSales; // Simplification: assume buys are funded by sells (unused)
         suggestions.forEach((suggestion) => {
           if (suggestion.action.startsWith("BUY")) {
             const categoryName = suggestion.category;
@@ -996,28 +998,11 @@ const PortfolioComparison = ({
   // Memoize generateRebalanceSuggestions and generateSpecificSuggestions
   const memoizedGenerateRebalanceSuggestions = useCallback(() => {
     return generateRebalanceSuggestions();
-  }, [
-    selectedModelPortfolio,
-    totalPortfolioValue,
-    deviations,
-    accounts,
-    categories,
-    modelPortfolios,
-    stockCategories,
-    stockPrices,
-  ]);
+  }, [generateRebalanceSuggestions]);
 
   const memoizedGenerateSpecificSuggestions = useCallback(() => {
     return generateSpecificSuggestions();
-  }, [
-    accounts,
-    categories,
-    modelPortfolios,
-    selectedModelPortfolio,
-    stockCategories,
-    stockPrices,
-    totalPortfolioValue,
-  ]);
+  }, [generateSpecificSuggestions]);
 
   // Calculate buy-only rebalancing suggestions when investment amount changes
   useEffect(() => {
@@ -1521,7 +1506,7 @@ const PortfolioComparison = ({
       // Calculate shares for each suggestion and get category information
       const suggestionsWithDetails = suggestions.map((suggestion) => {
         const parts = suggestion.action.split(" ");
-        const actionType = parts[0]; // BUY or SELL
+        // const actionType = parts[0]; // BUY or SELL (unused)
         const symbol = parts[1]; // AAPL
         const price = stockPrices[symbol] || 0;
         const shares = price > 0 ? Math.floor(suggestion.amount / price) : 0;

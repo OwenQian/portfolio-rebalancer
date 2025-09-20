@@ -39,28 +39,7 @@ const getDataDirectory = () => {
   return path.join(process.cwd(), 'data');
 };
 
-// Make sure data directory exists
-const ensureDataDirectoryExists = () => {
-  if (!isElectron()) {
-    return null;
-  }
-  
-  const dataDir = getDataDirectory();
-  if (dataDir && !fs.existsSync(dataDir)) {
-    fs.mkdirSync(dataDir, { recursive: true });
-  }
-  return dataDir;
-};
 
-// Get the full path to a data file
-const getDataFilePath = (filename) => {
-  if (!isElectron()) {
-    return null;
-  }
-  
-  const dataDir = ensureDataDirectoryExists();
-  return dataDir ? path.join(dataDir, filename) : null;
-};
 
 // Get the backups directory path and ensure it exists
 const ensureBackupsDirectoryExists = () => {
@@ -68,7 +47,7 @@ const ensureBackupsDirectoryExists = () => {
     return null;
   }
   
-  const dataDir = ensureDataDirectoryExists();
+  const dataDir = ensureConfiguredDataDirectoryExists();
   if (!dataDir) return null;
   
   const backupsDir = path.join(dataDir, 'backups');
@@ -95,7 +74,7 @@ const getBackupFilePath = (filename) => {
  * @returns {Promise<void>}
  */
 export const saveDataToFile = (filename, data) => {
-  return new Promise((resolve, reject) => {
+  return new Promise(async (resolve, reject) => {
     // Check if file operations are available
     if (!isElectron() || !fs) {
       reject(new Error('File system not available in this environment'));
@@ -108,7 +87,7 @@ export const saveDataToFile = (filename, data) => {
         filename = `${filename}.json`;
       }
       
-      const filePath = getDataFilePath(filename);
+      const filePath = getConfiguredDataFilePath(filename);
       if (!filePath) {
         reject(new Error('Unable to determine file path'));
         return;
@@ -116,15 +95,23 @@ export const saveDataToFile = (filename, data) => {
       
       const jsonData = JSON.stringify(data, null, 2);
       
-      fs.writeFile(filePath, jsonData, 'utf8', (err) => {
-        if (err) {
-          console.error('Error writing to file:', err);
-          reject(err);
-        } else {
-          console.log(`Data successfully saved to ${filePath}`);
-          resolve();
-        }
+      // Use retry logic for cloud storage operations
+      await retryOperation(async () => {
+        return new Promise((writeResolve, writeReject) => {
+          fs.writeFile(filePath, jsonData, 'utf8', (err) => {
+            if (err) {
+              const enhancedError = handleCloudStorageError(err, 'Save operation');
+              console.error('Error writing to file:', enhancedError.message);
+              writeReject(enhancedError);
+            } else {
+              console.log(`Data successfully saved to ${filePath}`);
+              writeResolve();
+            }
+          });
+        });
       });
+      
+      resolve();
     } catch (error) {
       console.error('Error in saveDataToFile:', error);
       reject(error);
@@ -139,7 +126,7 @@ export const saveDataToFile = (filename, data) => {
  * @returns {Promise<any>} - The loaded data
  */
 export const loadDataFromFile = (filename, defaultValue = null) => {
-  return new Promise((resolve, reject) => {
+  return new Promise(async (resolve, reject) => {
     // Check if file operations are available
     if (!isElectron() || !fs) {
       reject(new Error('File system not available in this environment'));
@@ -152,33 +139,41 @@ export const loadDataFromFile = (filename, defaultValue = null) => {
         filename = `${filename}.json`;
       }
       
-      const filePath = getDataFilePath(filename);
+      const filePath = getConfiguredDataFilePath(filename);
       if (!filePath) {
         resolve(defaultValue);
         return;
       }
       
-      // Check if file exists
-      if (!fs.existsSync(filePath)) {
-        console.log(`File ${filePath} does not exist, returning default value`);
-        resolve(defaultValue);
-        return;
-      }
-      
-      fs.readFile(filePath, 'utf8', (err, data) => {
-        if (err) {
-          console.error('Error reading file:', err);
-          reject(err);
-        } else {
-          try {
-            const parsedData = JSON.parse(data);
-            resolve(parsedData);
-          } catch (parseError) {
-            console.error('Error parsing JSON:', parseError);
-            reject(parseError);
+      // Use retry logic for cloud storage operations
+      const result = await retryOperation(async () => {
+        return new Promise((readResolve, readReject) => {
+          // Check if file exists
+          if (!fs.existsSync(filePath)) {
+            console.log(`File ${filePath} does not exist, returning default value`);
+            readResolve(defaultValue);
+            return;
           }
-        }
+          
+          fs.readFile(filePath, 'utf8', (err, data) => {
+            if (err) {
+              const enhancedError = handleCloudStorageError(err, 'Load operation');
+              console.error('Error reading file:', enhancedError.message);
+              readReject(enhancedError);
+            } else {
+              try {
+                const parsedData = JSON.parse(data);
+                readResolve(parsedData);
+              } catch (parseError) {
+                console.error('Error parsing JSON:', parseError);
+                readReject(parseError);
+              }
+            }
+          });
+        });
       });
+      
+      resolve(result);
     } catch (error) {
       console.error('Error in loadDataFromFile:', error);
       reject(error);
@@ -205,7 +200,7 @@ export const fileBackupExists = (filename) => {
         filename = `${filename}.json`;
       }
       
-      const filePath = getDataFilePath(filename);
+      const filePath = getConfiguredDataFilePath(filename);
       resolve(filePath && fs.existsSync(filePath));
     } catch (error) {
       console.error('Error checking file existence:', error);
@@ -319,4 +314,192 @@ export const importDataBackup = (filePath) => {
       reject(error);
     }
   });
+};
+
+// Storage location types
+export const STORAGE_TYPES = {
+  LOCAL: 'local',
+  ICLOUD: 'icloud',
+  GOOGLE_DRIVE: 'google_drive',
+  CUSTOM: 'custom'
+};
+
+// Cloud folder detection utilities
+export const detectCloudFolders = () => {
+  if (!isElectron() || !fs || !path) {
+    return { icloud: null, googleDrive: null };
+  }
+
+  const os = window.require('os');
+  const homeDir = os.homedir();
+  
+  const cloudPaths = {
+    icloud: null,
+    googleDrive: null
+  };
+
+  try {
+    // Detect iCloud Drive (macOS)
+    const icloudPath = path.join(homeDir, 'Library', 'Mobile Documents', 'com~apple~CloudDocs');
+    if (fs.existsSync(icloudPath)) {
+      cloudPaths.icloud = icloudPath;
+    }
+
+    // Detect Google Drive (multiple possible locations)
+    const googleDrivePaths = [
+      path.join(homeDir, 'Google Drive'),
+      path.join(homeDir, 'GoogleDrive'),
+      path.join(homeDir, 'Google Drive File Stream'),
+      path.join(homeDir, 'GoogleDriveFileStream')
+    ];
+
+    for (const gPath of googleDrivePaths) {
+      if (fs.existsSync(gPath)) {
+        cloudPaths.googleDrive = gPath;
+        break;
+      }
+    }
+  } catch (error) {
+    console.error('Error detecting cloud folders:', error);
+  }
+
+  return cloudPaths;
+};
+
+// Get storage configuration from settings
+let storageConfig = null;
+
+export const setStorageConfig = (config) => {
+  storageConfig = config;
+};
+
+export const getStorageConfig = () => {
+  if (!storageConfig) {
+    // Default to local storage
+    return {
+      type: STORAGE_TYPES.LOCAL,
+      path: null
+    };
+  }
+  return storageConfig;
+};
+
+// Get the configured data directory based on storage settings
+const getConfiguredDataDirectory = () => {
+  if (!isElectron()) {
+    return null;
+  }
+
+  const config = getStorageConfig();
+  
+  switch (config.type) {
+    case STORAGE_TYPES.ICLOUD:
+      const cloudFolders = detectCloudFolders();
+      if (cloudFolders.icloud) {
+        return path.join(cloudFolders.icloud, 'PortfolioRebalancer');
+      }
+      // Fallback to local if iCloud not available
+      console.warn('iCloud Drive not found, falling back to local storage');
+      return getDataDirectory();
+      
+    case STORAGE_TYPES.GOOGLE_DRIVE:
+      const gdFolders = detectCloudFolders();
+      if (gdFolders.googleDrive) {
+        return path.join(gdFolders.googleDrive, 'PortfolioRebalancer');
+      }
+      // Fallback to local if Google Drive not available
+      console.warn('Google Drive not found, falling back to local storage');
+      return getDataDirectory();
+      
+    case STORAGE_TYPES.CUSTOM:
+      return config.path;
+      
+    case STORAGE_TYPES.LOCAL:
+    default:
+      return getDataDirectory();
+  }
+};
+
+// Update existing functions to use configured storage
+const ensureConfiguredDataDirectoryExists = () => {
+  if (!isElectron()) {
+    return null;
+  }
+  
+  const dataDir = getConfiguredDataDirectory();
+  if (dataDir && !fs.existsSync(dataDir)) {
+    fs.mkdirSync(dataDir, { recursive: true });
+  }
+  return dataDir;
+};
+
+// Get the full path to a data file using configured storage
+const getConfiguredDataFilePath = (filename) => {
+  if (!isElectron()) {
+    return null;
+  }
+  
+  const dataDir = ensureConfiguredDataDirectoryExists();
+  return dataDir ? path.join(dataDir, filename) : null;
+};
+
+// Cloud-specific error handling and retry logic
+const retryOperation = async (operation, maxRetries = 3, delayMs = 1000) => {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await operation();
+    } catch (error) {
+      console.warn(`Operation failed (attempt ${attempt}/${maxRetries}):`, error.message);
+      
+      if (attempt === maxRetries) {
+        throw error;
+      }
+      
+      // Wait before retrying, with exponential backoff
+      await new Promise(resolve => setTimeout(resolve, delayMs * attempt));
+    }
+  }
+};
+
+// Enhanced file operations with cloud-specific error handling
+const isCloudStorageError = (error) => {
+  if (!error || !error.message) return false;
+  
+  const message = error.message.toLowerCase();
+  const cloudErrors = [
+    'enoent', // File not found (common with sync delays)
+    'ebusy',  // File busy (sync in progress)
+    'eagain', // Resource temporarily unavailable
+    'emfile', // Too many open files
+    'eacces', // Permission denied (sync conflicts)
+    'eperm',  // Operation not permitted
+    'enotdir', // Not a directory (sync issues)
+    'eisdir'  // Is a directory
+  ];
+  
+  return cloudErrors.some(errorType => message.includes(errorType));
+};
+
+const handleCloudStorageError = (error, operation = 'file operation') => {
+  if (!isCloudStorageError(error)) {
+    return error; // Return original error if not cloud-related
+  }
+  
+  const message = error.message.toLowerCase();
+  let userMessage = `${operation} failed: `;
+  
+  if (message.includes('enoent')) {
+    userMessage += 'File not found. This may occur if cloud sync is still in progress.';
+  } else if (message.includes('ebusy') || message.includes('eagain')) {
+    userMessage += 'File is temporarily busy. Cloud sync may be in progress.';
+  } else if (message.includes('eacces') || message.includes('eperm')) {
+    userMessage += 'Permission denied. Check cloud storage permissions or sync conflicts.';
+  } else {
+    userMessage += 'Cloud storage error. Please check your connection and sync status.';
+  }
+  
+  const enhancedError = new Error(userMessage);
+  enhancedError.originalError = error;
+  enhancedError.isCloudError = true;
+  return enhancedError;
 }; 

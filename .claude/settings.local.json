@@ -1,7 +1,11 @@
 {
   "permissions": {
     "allow": [
-      "Bash(rg -n \"useEffect|tempPrices.*stockPrices|stockPrices.*tempPrices\" src/components/CurrentPortfolio.js)"
+      "Bash(rg -n \"useEffect|tempPrices.*stockPrices|stockPrices.*tempPrices\" src/components/CurrentPortfolio.js)",
+      "Bash(npm run build:*)",
+      "Bash(npm test:*)",
+      "Bash(npm start)",
+      "Bash(find:*)"
     ],
     "deny": []
   }

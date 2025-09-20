@@ -46,6 +46,11 @@ export function calculateAllocations(params) {
   
   // Calculate values by category
   accounts.forEach(account => {
+    // Subtract margin balance from total value (margin is borrowed money)
+    if (account.marginBalance) {
+      totalValue -= account.marginBalance;
+    }
+    
     account.positions.forEach(position => {
       const price = stockPrices[position.symbol] || 0;
       const value = price * position.shares;
