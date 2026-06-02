@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Card, Button, Table, Form, Row, Col, Modal } from 'react-bootstrap';
+import { countStocksInCategory as countStocksInCategoryUtil, removeCategoryFromAllStocks } from '../utils/categoryUtils';
 
 const CategoryManager = ({ categories, setCategories, stockCategories, setStockCategories }) => {
   const [showAddModal, setShowAddModal] = useState(false);
@@ -56,27 +57,19 @@ const CategoryManager = ({ categories, setCategories, stockCategories, setStockC
 
   const handleDeleteCategory = (categoryId) => {
     // Count how many stocks are using this category
-    const stocksUsingCategory = Object.values(stockCategories).filter(
-      catId => catId === categoryId
-    ).length;
+    const stocksUsingCategory = countStocksInCategoryUtil(stockCategories, categoryId);
 
     if (stocksUsingCategory > 0) {
       const confirmDelete = window.confirm(
-        `This category is used by ${stocksUsingCategory} stock(s). If you delete it, these stocks will be uncategorized. Continue?`
+        `This category is used by ${stocksUsingCategory} stock(s). If you delete it, their percentages will be redistributed among remaining categories (or become uncategorized if sole). Continue?`
       );
-      
+
       if (!confirmDelete) {
         return;
       }
-      
-      // Remove the category from all stocks using it
-      const updatedStockCategories = { ...stockCategories };
-      Object.keys(updatedStockCategories).forEach(symbol => {
-        if (updatedStockCategories[symbol] === categoryId) {
-          delete updatedStockCategories[symbol];
-        }
-      });
-      
+
+      // Remove the category from all stocks and redistribute percentages
+      const updatedStockCategories = removeCategoryFromAllStocks(stockCategories, categoryId);
       setStockCategories(updatedStockCategories);
     } else if (!window.confirm('Are you sure you want to delete this category?')) {
       return;
@@ -89,7 +82,7 @@ const CategoryManager = ({ categories, setCategories, stockCategories, setStockC
 
   // Count how many stocks are using each category
   const countStocksInCategory = (categoryId) => {
-    return Object.values(stockCategories).filter(catId => catId === categoryId).length;
+    return countStocksInCategoryUtil(stockCategories, categoryId);
   };
 
   return (

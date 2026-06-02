@@ -3,6 +3,7 @@ import { Container, Row, Col, Tabs, Tab, Button, Modal, Form, Card } from 'react
 import 'bootstrap/dist/css/bootstrap.min.css';
 import './App.css';
 import { formatDollarAmount } from './utils/formatters';
+import { migrateStockCategories } from './utils/categoryUtils';
 
 // Import Components
 import Header from './components/Header';
@@ -25,6 +26,13 @@ import {
   getStorageConfig,
   STORAGE_TYPES
 } from './utils/fileStorage';
+
+// Helper to format multi-category allocations for CSV export
+function formatCategoryForCSV(allocs) {
+  if (!Array.isArray(allocs) || allocs.length === 0) return '';
+  if (allocs.length === 1) return allocs[0].categoryId;
+  return allocs.map(a => `${a.categoryId}:${a.percentage}%`).join('; ');
+}
 
 function App() {
   // State to store model portfolios
@@ -59,10 +67,10 @@ function App() {
     ];
   });
 
-  // State to store stock mappings to categories
+  // State to store stock mappings to categories (multi-category array format)
   const [stockCategories, setStockCategories] = useState(() => {
     const savedMappings = localStorage.getItem('stockCategories');
-    return savedMappings ? JSON.parse(savedMappings) : {};
+    return savedMappings ? migrateStockCategories(JSON.parse(savedMappings)) : {};
   });
 
   // State to store current stock prices
@@ -156,7 +164,7 @@ function App() {
     setAccounts(migratedAccounts);
     
     setCategories(data.categories || []);
-    setStockCategories(data.stockCategories || {});
+    setStockCategories(migrateStockCategories(data.stockCategories || {}));
     setStockPrices(data.stockPrices || {});
     
     // Fix dates and ensure portfolio history data is properly preserved
@@ -803,16 +811,16 @@ function App() {
                   portfolioName: portfolio.name,
                   symbol: stock.symbol,
                   targetWeight: stock.targetWeight,
-                  category: stockCategories[stock.symbol] || ''
+                  category: formatCategoryForCSV(stockCategories[stock.symbol])
                 });
               });
             });
-            
+
             if (modelPortfolioCSV.length > 0) {
               csvSections.push('MODEL PORTFOLIOS\n' + convertToCSV(modelPortfolioCSV));
             }
           }
-          
+
           // Add accounts section if data exists
           if (accounts && accounts.length > 0) {
             const accountsCSV = [];
@@ -824,7 +832,7 @@ function App() {
                   symbol: position.symbol,
                   shares: position.shares,
                   price: stockPrices[position.symbol] || 0,
-                  category: stockCategories[position.symbol] || ''
+                  category: formatCategoryForCSV(stockCategories[position.symbol])
                 });
               });
             });

@@ -3,6 +3,8 @@ import { Card, Button, Table, Form, Row, Col, Modal, Badge, Accordion, Spinner, 
 import { formatDollarAmount } from '../utils/formatters';
 import PortfolioValueChart from './PortfolioValueChart';
 import PriceInput from './PriceInput';
+import MultiCategorySelector from './MultiCategorySelector';
+import { setSingleCategory } from '../utils/categoryUtils';
 
 const CurrentPortfolio = ({ 
   accounts, 
@@ -36,7 +38,7 @@ const CurrentPortfolio = ({
   const [newCategory, setNewCategory] = useState('');
   const [editingAssets, setEditingAssets] = useState(false);
   const [tempPrices, setTempPrices] = useState({...stockPrices});
-  const [tempCategories, setTempCategories] = useState({...stockCategories});
+  const [tempCategories, setTempCategories] = useState(JSON.parse(JSON.stringify(stockCategories)));
   const [expandedAccounts, setExpandedAccounts] = useState(Array(accounts.length).fill(true).map((_, i) => i.toString()));
   const [sortedSnapshotHistory, setSortedSnapshotHistory] = useState([]);
   const [editingSnapshotIndex, setEditingSnapshotIndex] = useState(null);
@@ -55,7 +57,7 @@ const CurrentPortfolio = ({
   // Sync tempPrices and tempCategories with parent component updates
   useEffect(() => {
     setTempPrices({...stockPrices});
-    setTempCategories({...stockCategories});
+    setTempCategories(JSON.parse(JSON.stringify(stockCategories)));
   }, [stockPrices, stockCategories]);
 
   const getAllUniqueStockSymbols = () => {
@@ -121,10 +123,10 @@ const CurrentPortfolio = ({
     }));
   };
 
-  const handleCategoryChange = (symbol, categoryId) => {
+  const handleCategoryChange = (symbol, allocations) => {
     setTempCategories(prev => ({
       ...prev,
-      [symbol]: categoryId
+      [symbol]: allocations
     }));
   };
 
@@ -160,7 +162,7 @@ const CurrentPortfolio = ({
 
   const cancelAssetEditing = () => {
     setTempPrices({...stockPrices});
-    setTempCategories({...stockCategories});
+    setTempCategories(JSON.parse(JSON.stringify(stockCategories)));
     setEditingAssets(false);
   };
 
@@ -369,14 +371,15 @@ const CurrentPortfolio = ({
 
     if (newCategory) {
       // Update both the main stockCategories and the temporary one used in asset settings
+      const categoryAlloc = setSingleCategory(newCategory);
       const updatedCategories = {
         ...stockCategories,
-        [symbol]: newCategory
+        [symbol]: categoryAlloc
       };
       setStockCategories(updatedCategories);
       setTempCategories({
         ...tempCategories,
-        [symbol]: newCategory
+        [symbol]: categoryAlloc
       });
     }
 
@@ -524,7 +527,7 @@ const CurrentPortfolio = ({
     if (newCategory) {
       setTempCategories(prev => ({
         ...prev,
-        [symbol]: newCategory
+        [symbol]: setSingleCategory(newCategory)
       }));
     }
 
@@ -921,18 +924,12 @@ const CurrentPortfolio = ({
                           />
                         </td>
                         <td>
-                          <Form.Select
+                          <MultiCategorySelector
+                            categories={categories}
+                            allocations={tempCategories[symbol] || []}
+                            onChange={(allocs) => handleCategoryChange(symbol, allocs)}
                             size="sm"
-                            value={tempCategories[symbol] || ''}
-                            onChange={(e) => handleCategoryChange(symbol, e.target.value)}
-                          >
-                            <option value="">Select category</option>
-                            {categories.map(category => (
-                              <option key={category.id} value={category.id}>
-                                {category.name}
-                              </option>
-                            ))}
-                          </Form.Select>
+                          />
                         </td>
                       </tr>
                     );
@@ -1062,23 +1059,20 @@ const CurrentPortfolio = ({
                               <tr key={positionIndex}>
                                 <td>{position.symbol}</td>
                                 <td>
-                                  {editingAssets ? (
-                                    tempCategories[position.symbol] ? (
-                                      <Badge bg="info">
-                                        {categories.find(cat => cat.id === tempCategories[position.symbol])?.name || 'Unknown'}
-                                      </Badge>
-                                    ) : (
-                                      <Badge bg="secondary">Uncategorized</Badge>
-                                    )
-                                  ) : (
-                                    stockCategories[position.symbol] ? (
-                                      <Badge bg="info">
-                                        {categories.find(cat => cat.id === stockCategories[position.symbol])?.name || 'Unknown'}
-                                      </Badge>
-                                    ) : (
-                                      <Badge bg="secondary">Uncategorized</Badge>
-                                    )
-                                  )}
+                                  {(() => {
+                                    const allocs = editingAssets
+                                      ? tempCategories[position.symbol]
+                                      : stockCategories[position.symbol];
+                                    if (Array.isArray(allocs) && allocs.length > 0) {
+                                      return allocs.map((a, i) => (
+                                        <Badge key={i} bg="info" className="me-1">
+                                          {categories.find(cat => cat.id === a.categoryId)?.name || 'Unknown'}
+                                          {allocs.length > 1 ? ` ${a.percentage}%` : ''}
+                                        </Badge>
+                                      ));
+                                    }
+                                    return <Badge bg="secondary">Uncategorized</Badge>;
+                                  })()}
                                 </td>
                                 <td>
                                   <Form.Control

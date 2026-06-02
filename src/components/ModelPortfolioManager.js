@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Row, Col, Card, Button, Form, Table, Modal, Badge, Dropdown } from 'react-bootstrap';
 import { formatNumber } from '../utils/formatters';
+import { setSingleCategory } from '../utils/categoryUtils';
 
 const ModelPortfolioManager = ({ 
   modelPortfolios, 
@@ -40,38 +41,39 @@ const ModelPortfolioManager = ({
 
   // Function to categorize ETFs automatically
   const categorizeETFs = (stocks) => {
-    // Map of ETFs to their categories
+    // Map of ETFs to their category allocations (multi-category format)
     const etfCategories = {
-      "VTI": "1", // US Large Cap
-      "VXUS": "3", // International Developed Markets
-      "BND": "7", // Other (for bonds)
-      "VOO": "1", // US Large Cap
-      "VEA": "3", // International Developed Markets
-      "VWO": "4", // Emerging Markets
-      "VB": "2", // US Small Cap
-      "VTV": "1", // US Large Cap (Value)
-      "VUG": "1", // US Large Cap (Growth)
-      "VTEB": "7", // Other (Municipal bonds)
-      "VGSH": "7", // Other (Short-term Treasury)
-      "VGIT": "7", // Other (Intermediate-term Treasury)
-      "VGLT": "7", // Other (Long-term Treasury)
-      "VCSH": "7", // Other (Short-term corporate bonds)
-      "VCIT": "7", // Other (Intermediate-term corporate bonds)
-      "VCLT": "7", // Other (Long-term corporate bonds)
-      "VSS": "5", // International Small Cap
-      "VXF": "2" // US Small Cap
+      "VTI": [{ categoryId: "1", percentage: 100 }], // US Large Cap
+      "VXUS": [{ categoryId: "3", percentage: 100 }], // International Developed Markets
+      "BND": [{ categoryId: "7", percentage: 100 }], // Other (for bonds)
+      "VOO": [{ categoryId: "1", percentage: 100 }], // US Large Cap
+      "VEA": [{ categoryId: "3", percentage: 100 }], // International Developed Markets
+      "VWO": [{ categoryId: "4", percentage: 100 }], // Emerging Markets
+      "VB": [{ categoryId: "2", percentage: 100 }], // US Small Cap
+      "VTV": [{ categoryId: "1", percentage: 100 }], // US Large Cap (Value)
+      "VUG": [{ categoryId: "1", percentage: 100 }], // US Large Cap (Growth)
+      "VTEB": [{ categoryId: "7", percentage: 100 }], // Other (Municipal bonds)
+      "VGSH": [{ categoryId: "7", percentage: 100 }], // Other (Short-term Treasury)
+      "VGIT": [{ categoryId: "7", percentage: 100 }], // Other (Intermediate-term Treasury)
+      "VGLT": [{ categoryId: "7", percentage: 100 }], // Other (Long-term Treasury)
+      "VCSH": [{ categoryId: "7", percentage: 100 }], // Other (Short-term corporate bonds)
+      "VCIT": [{ categoryId: "7", percentage: 100 }], // Other (Intermediate-term corporate bonds)
+      "VCLT": [{ categoryId: "7", percentage: 100 }], // Other (Long-term corporate bonds)
+      "VSS": [{ categoryId: "5", percentage: 100 }], // International Small Cap
+      "VXF": [{ categoryId: "2", percentage: 100 }], // US Small Cap
+      "VT": [{ categoryId: "1", percentage: 60 }, { categoryId: "3", percentage: 25 }, { categoryId: "4", percentage: 15 }], // Total World Stock
     };
 
     // Create a new map merging existing categories with automatic ones
     const newCategories = { ...stockCategories };
-    
+
     // Add category for each stock if not already categorized
     stocks.forEach(stock => {
       if (etfCategories[stock.symbol] && !newCategories[stock.symbol]) {
         newCategories[stock.symbol] = etfCategories[stock.symbol];
       }
     });
-    
+
     return newCategories;
   };
 
@@ -118,11 +120,12 @@ const ModelPortfolioManager = ({
   const handleEditPortfolio = (portfolio, index) => {
     setCurrentPortfolio(portfolio);
     setNewPortfolioName(portfolio.name);
-    // Add categoryId property to each stock for editing
-    const stocksWithCategories = portfolio.stocks.map(stock => ({
-      ...stock,
-      categoryId: stockCategories[stock.symbol] || ''
-    }));
+    // Add categoryId property to each stock for editing (primary category from array format)
+    const stocksWithCategories = portfolio.stocks.map(stock => {
+      const allocs = stockCategories[stock.symbol];
+      const primaryCatId = Array.isArray(allocs) && allocs.length > 0 ? allocs[0].categoryId : '';
+      return { ...stock, categoryId: primaryCatId };
+    });
     setStocks(stocksWithCategories);
     setEditIndex(index);
     setShowEditModal(true);
@@ -160,7 +163,7 @@ const ModelPortfolioManager = ({
     if (newStockCategory) {
       setStockCategories({
         ...stockCategories,
-        [symbol]: newStockCategory
+        [symbol]: setSingleCategory(newStockCategory)
       });
     }
 
@@ -222,11 +225,15 @@ const ModelPortfolioManager = ({
       return;
     }
 
-    // Save any category changes
+    // Save any category changes (convert single categoryId to array format)
     const updatedStockCategories = { ...stockCategories };
     stocks.forEach(stock => {
-      if (stock.categoryId && stock.categoryId !== stockCategories[stock.symbol]) {
-        updatedStockCategories[stock.symbol] = stock.categoryId;
+      if (stock.categoryId) {
+        const currentAllocs = stockCategories[stock.symbol];
+        const currentPrimary = Array.isArray(currentAllocs) && currentAllocs.length > 0 ? currentAllocs[0].categoryId : '';
+        if (stock.categoryId !== currentPrimary) {
+          updatedStockCategories[stock.symbol] = setSingleCategory(stock.categoryId);
+        }
       }
     });
     setStockCategories(updatedStockCategories);
@@ -325,10 +332,13 @@ const ModelPortfolioManager = ({
                             <td>{stock.symbol}</td>
                             <td>{formatNumber(stock.percentage)}%</td>
                             <td>
-                              {stockCategories[stock.symbol] ? (
-                                <Badge bg="info">
-                                  {categories.find(cat => cat.id === stockCategories[stock.symbol])?.name || 'Unknown'}
-                                </Badge>
+                              {Array.isArray(stockCategories[stock.symbol]) && stockCategories[stock.symbol].length > 0 ? (
+                                stockCategories[stock.symbol].map((alloc, i) => (
+                                  <Badge key={i} bg="info" className="me-1">
+                                    {categories.find(cat => cat.id === alloc.categoryId)?.name || 'Unknown'}
+                                    {stockCategories[stock.symbol].length > 1 ? ` ${alloc.percentage}%` : ''}
+                                  </Badge>
+                                ))
                               ) : (
                                 <Badge bg="secondary">Uncategorized</Badge>
                               )}
@@ -429,10 +439,13 @@ const ModelPortfolioManager = ({
                       <td>{stock.symbol}</td>
                       <td>{formatNumber(stock.percentage)}%</td>
                       <td>
-                        {stockCategories[stock.symbol] ? (
-                          <Badge bg="info">
-                            {categories.find(cat => cat.id === stockCategories[stock.symbol])?.name || 'Unknown'}
-                          </Badge>
+                        {Array.isArray(stockCategories[stock.symbol]) && stockCategories[stock.symbol].length > 0 ? (
+                          stockCategories[stock.symbol].map((alloc, i) => (
+                            <Badge key={i} bg="info" className="me-1">
+                              {categories.find(cat => cat.id === alloc.categoryId)?.name || 'Unknown'}
+                              {stockCategories[stock.symbol].length > 1 ? ` ${alloc.percentage}%` : ''}
+                            </Badge>
+                          ))
                         ) : (
                           <Badge bg="secondary">Uncategorized</Badge>
                         )}
