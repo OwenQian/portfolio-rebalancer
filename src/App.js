@@ -459,6 +459,7 @@ function App() {
       // Request one symbol at a time and stop on the first failure to conserve API credits.
       const batchSize = 1;
       const updatedPrices = { ...stockPrices };
+      const successfulSymbols = [];
       const failedSymbols = [];
       const batchErrors = [];
       let stoppedEarly = false;
@@ -500,6 +501,7 @@ function App() {
           for (let j = 0; j < priceEntries.length; j++) {
             const [symbol, price] = priceEntries[j];
             updatedPrices[symbol] = price;
+            successfulSymbols.push(symbol);
             successCount += 1;
           }
           
@@ -526,6 +528,7 @@ function App() {
       if (failedSymbols.length > 0 || skippedSymbols.length > 0) {
         const errorMessage = buildPriceSyncErrorMessage({
           successCount,
+          successfulSymbols,
           failedSymbols,
           skippedSymbols,
           batchErrors,
@@ -535,7 +538,15 @@ function App() {
         console.error('Price sync details:', { failedSymbols, skippedSymbols, batchErrors });
         alert(`Price sync updated ${successCount} symbols. ${failedSymbols.length} failed and ${skippedSymbols.length} were skipped. Sync stops on first failure to conserve API credits. See details in the price sync error panel.`);
       } else {
-        alert(`Successfully updated prices for ${successCount} symbols!`);
+        const successMessage = buildPriceSyncErrorMessage({
+          successCount,
+          successfulSymbols,
+          failedSymbols: [],
+          skippedSymbols: [],
+          batchErrors: [],
+        });
+        setApiError(successMessage);
+        alert(`Successfully updated prices for ${successCount} symbols: ${successfulSymbols.join(', ')}`);
       }
       
       return totalValue;

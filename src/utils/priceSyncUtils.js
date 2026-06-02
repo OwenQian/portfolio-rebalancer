@@ -114,10 +114,18 @@ export function extractMarketstackPrices(symbols, payload) {
   return { prices, failures };
 }
 
-export function buildPriceSyncErrorMessage({ successCount, failedSymbols, skippedSymbols, batchErrors, stoppedEarly = false }) {
+export function buildPriceSyncErrorMessage({ successCount, successfulSymbols = [], failedSymbols, skippedSymbols, batchErrors, stoppedEarly = false }) {
   const lines = [
     `Price sync updated ${successCount} symbol${successCount === 1 ? '' : 's'}.`,
   ];
+
+  if (successfulSymbols.length > 0) {
+    lines.push('');
+    lines.push(`Updated successfully (${successfulSymbols.length}):`);
+    successfulSymbols.forEach(symbol => {
+      lines.push(`- ${symbol}`);
+    });
+  }
 
   if (stoppedEarly) {
     lines.push('');

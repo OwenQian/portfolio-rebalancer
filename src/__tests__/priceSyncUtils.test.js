@@ -85,6 +85,7 @@ describe('priceSyncUtils', () => {
     it('builds a readable multiline diagnostic', () => {
       const message = buildPriceSyncErrorMessage({
         successCount: 1,
+        successfulSymbols: ['AAPL'],
         failedSymbols: [{ symbol: 'MSFT', reason: 'No data row returned by Marketstack' }],
         skippedSymbols: [{ symbol: 'BTC-USD', reason: 'Yahoo-style crypto pair' }],
         batchErrors: [{ symbols: ['AAPL', 'MSFT'], reason: 'HTTP 422: invalid symbol' }],
@@ -92,6 +93,8 @@ describe('priceSyncUtils', () => {
       });
 
       expect(message).toContain('Price sync updated 1 symbol.');
+      expect(message).toContain('Updated successfully (1):');
+      expect(message).toContain('- AAPL');
       expect(message).toContain('Stopped after the first API failure');
       expect(message).toContain('MSFT: No data row returned by Marketstack');
       expect(message).toContain('BTC-USD: Yahoo-style crypto pair');
