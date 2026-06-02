@@ -1,6 +1,6 @@
 # Portfolio Rebalancer
 
-A web application to help track and rebalance investment portfolios according to target allocation models.
+A desktop application to help track and rebalance investment portfolios according to target allocation models. A browser-only development mode is also available.
 
 ## Features
 
@@ -10,7 +10,7 @@ A web application to help track and rebalance investment portfolios according to
 - **Allocation Visualization**: View current allocation with interactive pie charts
 - **Rebalancing Tools**: Compare current allocation with target models and get rebalancing suggestions
 - **Data Export**: Export portfolio data and rebalancing recommendations to JSON or CSV
-- **Data Persistence**: Save portfolio data locally with backup and restore capabilities in both web and desktop versions
+- **Data Persistence**: Save portfolio data locally with automatic desktop backups and browser backup/restore support
 
 ## Screenshot
 
@@ -37,26 +37,36 @@ A web application to help track and rebalance investment portfolios according to
    npm install
    ```
 
-3. Start the development server:
+3. Start the desktop app:
    ```
    npm start
    ```
 
-4. Open [http://localhost:3000](http://localhost:3000) in your browser to use the application.
+   This launches the Electron desktop app and starts the React development server on port 3001 in the background.
 
-### Desktop App (Optional)
+### Browser-Only Development
 
-For enhanced features like automatic file-based data persistence:
+To run the React app directly in a browser instead of Electron:
 
-1. Run the desktop application:
-   ```
-   npm run electron-dev
-   ```
+```
+npm run web
+```
 
-2. Build desktop apps for distribution:
-   ```
-   npm run package
-   ```
+Then open [http://localhost:3001](http://localhost:3001).
+
+### Desktop Distribution
+
+To build desktop apps for distribution:
+
+```
+npm run package
+```
+
+### Development Notes
+
+- `npm start` and `npm run electron` both launch the desktop app.
+- `npm run web` launches only the browser version.
+- To open Electron DevTools at startup, run with `ELECTRON_OPEN_DEVTOOLS=true npm start`.
 
 ## Usage Guide
 

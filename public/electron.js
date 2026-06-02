@@ -8,6 +8,7 @@ initialize();
 
 // Get port from environment variable or default to 3001
 const PORT = process.env.PORT || 3001;
+const OPEN_DEVTOOLS = process.env.ELECTRON_OPEN_DEVTOOLS === 'true';
 
 function createWindow() {
   // Create the browser window
@@ -32,8 +33,8 @@ function createWindow() {
       : `file://${path.join(__dirname, '../build/index.html')}`
   );
 
-  // Open DevTools in development mode
-  if (isDev) {
+  // Open DevTools only when explicitly requested.
+  if (isDev && OPEN_DEVTOOLS) {
     mainWindow.webContents.openDevTools();
   }
 }
