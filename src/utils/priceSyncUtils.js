@@ -1,3 +1,5 @@
+export const MARKETSTACK_EOD_LATEST_URL = 'https://api.marketstack.com/v2/eod/latest';
+
 export function normalizeSymbol(symbol) {
   return String(symbol || '').trim().toUpperCase();
 }
@@ -112,10 +114,15 @@ export function extractMarketstackPrices(symbols, payload) {
   return { prices, failures };
 }
 
-export function buildPriceSyncErrorMessage({ successCount, failedSymbols, skippedSymbols, batchErrors }) {
+export function buildPriceSyncErrorMessage({ successCount, failedSymbols, skippedSymbols, batchErrors, stoppedEarly = false }) {
   const lines = [
     `Price sync updated ${successCount} symbol${successCount === 1 ? '' : 's'}.`,
   ];
+
+  if (stoppedEarly) {
+    lines.push('');
+    lines.push('Stopped after the first API failure to conserve Marketstack credits.');
+  }
 
   if (failedSymbols.length > 0) {
     lines.push('');

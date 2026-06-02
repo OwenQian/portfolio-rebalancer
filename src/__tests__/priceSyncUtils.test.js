@@ -2,10 +2,15 @@ import {
   buildPriceSyncErrorMessage,
   extractMarketstackPrices,
   getMarketstackPreflightIssue,
+  MARKETSTACK_EOD_LATEST_URL,
   partitionSymbolsForMarketstack,
 } from '../utils/priceSyncUtils';
 
 describe('priceSyncUtils', () => {
+  it('uses Marketstack V2 for latest EOD prices', () => {
+    expect(MARKETSTACK_EOD_LATEST_URL).toBe('https://api.marketstack.com/v2/eod/latest');
+  });
+
   describe('getMarketstackPreflightIssue', () => {
     it('flags Yahoo-style crypto symbols before requesting Marketstack', () => {
       expect(getMarketstackPreflightIssue('BTC-USD')).toContain('Yahoo-style crypto pair');
@@ -83,9 +88,11 @@ describe('priceSyncUtils', () => {
         failedSymbols: [{ symbol: 'MSFT', reason: 'No data row returned by Marketstack' }],
         skippedSymbols: [{ symbol: 'BTC-USD', reason: 'Yahoo-style crypto pair' }],
         batchErrors: [{ symbols: ['AAPL', 'MSFT'], reason: 'HTTP 422: invalid symbol' }],
+        stoppedEarly: true,
       });
 
       expect(message).toContain('Price sync updated 1 symbol.');
+      expect(message).toContain('Stopped after the first API failure');
       expect(message).toContain('MSFT: No data row returned by Marketstack');
       expect(message).toContain('BTC-USD: Yahoo-style crypto pair');
       expect(message).toContain('AAPL, MSFT: HTTP 422: invalid symbol');

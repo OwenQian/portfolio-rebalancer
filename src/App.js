@@ -7,6 +7,7 @@ import { migrateStockCategories } from './utils/categoryUtils';
 import {
   buildPriceSyncErrorMessage,
   extractMarketstackPrices,
+  MARKETSTACK_EOD_LATEST_URL,
   parseMarketstackResponseError,
   partitionSymbolsForMarketstack,
 } from './utils/priceSyncUtils';
@@ -455,11 +456,12 @@ function App() {
         return calculateTotalPortfolioValue(accounts, stockPrices);
       }
 
-      // Process symbols in batches of 100 (API limit)
-      const batchSize = 100;
+      // Request one symbol at a time and stop on the first failure to conserve API credits.
+      const batchSize = 1;
       const updatedPrices = { ...stockPrices };
       const failedSymbols = [];
       const batchErrors = [];
+      let stoppedEarly = false;
       let successCount = 0;
 
       for (let i = 0; i < requestableSymbols.length; i += batchSize) {
@@ -474,7 +476,7 @@ function App() {
 
           // Make API request to Marketstack
           const response = await fetch(
-            `https://api.marketstack.com/v1/eod/latest?${query.toString()}`
+            `${MARKETSTACK_EOD_LATEST_URL}?${query.toString()}`
           );
 
           if (!response.ok) {
@@ -488,13 +490,18 @@ function App() {
           }
 
           const { prices, failures } = extractMarketstackPrices(batchSymbols, data);
+          if (failures.length > 0) {
+            failedSymbols.push(...failures);
+            stoppedEarly = true;
+            break;
+          }
+
           const priceEntries = Object.entries(prices);
           for (let j = 0; j < priceEntries.length; j++) {
             const [symbol, price] = priceEntries[j];
             updatedPrices[symbol] = price;
             successCount += 1;
           }
-          failedSymbols.push(...failures);
           
           // Add a small delay to respect API rate limits
           await new Promise(resolve => setTimeout(resolve, 200));
@@ -505,6 +512,8 @@ function App() {
             symbol,
             reason: error.message,
           })));
+          stoppedEarly = true;
+          break;
         }
       }
 
@@ -520,10 +529,11 @@ function App() {
           failedSymbols,
           skippedSymbols,
           batchErrors,
+          stoppedEarly,
         });
         setApiError(errorMessage);
         console.error('Price sync details:', { failedSymbols, skippedSymbols, batchErrors });
-        alert(`Price sync updated ${successCount} symbols. ${failedSymbols.length} failed and ${skippedSymbols.length} were skipped. See details in the price sync error panel.`);
+        alert(`Price sync updated ${successCount} symbols. ${failedSymbols.length} failed and ${skippedSymbols.length} were skipped. Sync stops on first failure to conserve API credits. See details in the price sync error panel.`);
       } else {
         alert(`Successfully updated prices for ${successCount} symbols!`);
       }
