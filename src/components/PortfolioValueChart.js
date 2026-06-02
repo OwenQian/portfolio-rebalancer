@@ -44,16 +44,16 @@ const PortfolioValueChart = ({ portfolioValueHistory }) => {
     
     switch(timeRange) {
       case '1m':
-        cutoffDate = new Date(now.setMonth(now.getMonth() - 1));
+        cutoffDate = new Date(now.getFullYear(), now.getMonth() - 1, now.getDate());
         break;
       case '3m':
-        cutoffDate = new Date(now.setMonth(now.getMonth() - 3));
+        cutoffDate = new Date(now.getFullYear(), now.getMonth() - 3, now.getDate());
         break;
       case '6m':
-        cutoffDate = new Date(now.setMonth(now.getMonth() - 6));
+        cutoffDate = new Date(now.getFullYear(), now.getMonth() - 6, now.getDate());
         break;
       case '1y':
-        cutoffDate = new Date(now.setFullYear(now.getFullYear() - 1));
+        cutoffDate = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate());
         break;
       default:
         return sortedHistory;
@@ -69,7 +69,7 @@ const PortfolioValueChart = ({ portfolioValueHistory }) => {
     const firstValue = parseFloat(filteredData[0].value);
     const lastValue = parseFloat(filteredData[filteredData.length - 1].value);
     const change = lastValue - firstValue;
-    const percentChange = (change / firstValue) * 100;
+    const percentChange = firstValue === 0 ? 0 : (change / firstValue) * 100;
     
     return { 
       change: change.toFixed(2), 
