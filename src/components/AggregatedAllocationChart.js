@@ -3,6 +3,7 @@ import { Card } from 'react-bootstrap';
 import { Pie } from 'react-chartjs-2';
 import { Chart as ChartJS, ArcElement, Tooltip, Legend } from 'chart.js';
 import { formatDollarAmount, formatNumber } from '../utils/formatters';
+import { distributeToCategoriesByValue } from '../utils/categoryUtils';
 
 // Register ChartJS components
 ChartJS.register(ArcElement, Tooltip, Legend);
@@ -31,15 +32,17 @@ const AggregatedAllocationChart = ({ accounts, categories, stockCategories, stoc
     // Add an "Uncategorized" category
     categoryAllocations['uncategorized'] = 0;
 
-    // Calculate values by category
+    // Calculate values by category — distribute across multi-category splits
     accounts.forEach(account => {
       account.positions.forEach(position => {
         const price = stockPrices[position.symbol] || 0;
         const value = price * position.shares;
         totalValue += value;
 
-        const categoryId = stockCategories[position.symbol] || 'uncategorized';
-        categoryAllocations[categoryId] = (categoryAllocations[categoryId] || 0) + value;
+        const distributed = distributeToCategoriesByValue(stockCategories, position.symbol, value);
+        for (const [catId, amt] of Object.entries(distributed)) {
+          categoryAllocations[catId] = (categoryAllocations[catId] || 0) + amt;
+        }
       });
     });
 

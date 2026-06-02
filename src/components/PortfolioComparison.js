@@ -14,6 +14,11 @@ import {
 import { Pie } from "react-chartjs-2";
 import { Chart as ChartJS, ArcElement, Tooltip, Legend } from "chart.js";
 import { formatNumber } from "../utils/formatters";
+import {
+  distributeToCategoriesByPercentage,
+  distributeToCategoriesByValue,
+  getStockCategoryAllocations,
+} from "../utils/categoryUtils";
 
 // Register ChartJS components
 ChartJS.register(ArcElement, Tooltip, Legend);
@@ -57,6 +62,9 @@ const PortfolioComparison = ({
   const [buyOnlyUnallocatedAmount, setBuyOnlyUnallocatedAmount] = useState(0); // <-- Added state
   const [isCalculatingNeeded, setIsCalculatingNeeded] = useState(false); // <-- Added state
 
+  // Stock-level comparison state
+  const [showStockComparison, setShowStockComparison] = useState(false);
+
   // Add these state variables near the top with other states
   const [showJsonModal, setShowJsonModal] = useState(false);
   const [showCsvModal, setShowCsvModal] = useState(false);
@@ -93,11 +101,12 @@ const PortfolioComparison = ({
       });
       allocation["uncategorized"] = 0;
 
-      // Calculate allocations by category
+      // Calculate allocations by category — distribute across multi-category splits
       selectedPortfolio.stocks.forEach((stock) => {
-        const categoryId = stockCategories[stock.symbol] || "uncategorized";
-        allocation[categoryId] =
-          (allocation[categoryId] || 0) + stock.percentage;
+        const distributed = distributeToCategoriesByPercentage(stockCategories, stock.symbol, stock.percentage);
+        for (const [catId, pct] of Object.entries(distributed)) {
+          allocation[catId] = (allocation[catId] || 0) + pct;
+        }
         totalPercentage += stock.percentage;
       });
 
@@ -125,15 +134,17 @@ const PortfolioComparison = ({
     });
     allocation["uncategorized"] = 0;
 
-    // Calculate values by category
+    // Calculate values by category — distribute across multi-category splits
     accounts.forEach((account) => {
       account.positions.forEach((position) => {
         const price = stockPrices[position.symbol] || 0;
         const value = price * position.shares;
         totalValue += value;
 
-        const categoryId = stockCategories[position.symbol] || "uncategorized";
-        allocation[categoryId] = (allocation[categoryId] || 0) + value;
+        const distributed = distributeToCategoriesByValue(stockCategories, position.symbol, value);
+        for (const [catId, amt] of Object.entries(distributed)) {
+          allocation[catId] = (allocation[catId] || 0) + amt;
+        }
       });
     });
 
@@ -289,7 +300,7 @@ const PortfolioComparison = ({
   }, [whatIfTrades, showWhatIfAnalysis, simulateAllocationChange]);
 
   // Generate rebalance suggestions
-  const generateRebalanceSuggestions = () => {
+  const generateRebalanceSuggestions = useCallback(() => {
     if (!selectedModelPortfolio) return [];
 
     const totalValue = totalPortfolioValue;
@@ -315,7 +326,7 @@ const PortfolioComparison = ({
             shares: position.shares,
             value,
             price,
-            category: stockCategories[symbol] || "uncategorized",
+            allocations: getStockCategoryAllocations(stockCategories, symbol),
           };
         } else {
           symbolTotals[symbol].value += value;
@@ -324,18 +335,29 @@ const PortfolioComparison = ({
       });
     });
 
-    // Group symbols by category for decision making
-    const categorizedSymbols = {};
-    Object.values(symbolTotals).forEach((item) => {
-      if (!categorizedSymbols[item.category]) {
-        categorizedSymbols[item.category] = [];
-      }
-      categorizedSymbols[item.category].push(item);
+    // Build per-stock target percentages from model portfolio
+    const modelStocksMap = {};
+    modelPortfolioObj.stocks.forEach((stock) => {
+      modelStocksMap[stock.symbol] = stock.percentage;
     });
 
-    // Sort each category's symbols by value (ascending for selling, descending for buying)
-    Object.keys(categorizedSymbols).forEach((category) => {
-      categorizedSymbols[category].sort((a, b) => a.value - b.value); // Ascending for selling lowest value first
+    // Group symbols by category for decision making (multi-category: a stock appears in each category)
+    const categorizedSymbols = {};
+    Object.values(symbolTotals).forEach((item) => {
+      const currentPct = totalValue > 0 ? (item.value / totalValue) * 100 : 0;
+      const targetPct = modelStocksMap[item.symbol] || 0;
+      const stockDeviation = currentPct - targetPct;
+
+      for (const { categoryId, percentage } of item.allocations) {
+        if (!categorizedSymbols[categoryId]) {
+          categorizedSymbols[categoryId] = [];
+        }
+        categorizedSymbols[categoryId].push({
+          ...item,
+          categoryValue: item.value * (percentage / 100),
+          stockDeviation,
+        });
+      }
     });
 
     // First handle all sells (overweight positions)
@@ -351,9 +373,12 @@ const PortfolioComparison = ({
           categorizedSymbols[categoryId] &&
           categorizedSymbols[categoryId].length > 0
         ) {
-          // Try to sell smallest positions first to reach the target reduction
+          // Sort by stockDeviation descending: sell most overweight stock first
+          const sellPositions = [...categorizedSymbols[categoryId]].sort(
+            (a, b) => b.stockDeviation - a.stockDeviation
+          );
           let amountSold = 0;
-          for (const positionToSell of categorizedSymbols[categoryId]) {
+          for (const positionToSell of sellPositions) {
             if (amountSold >= amountToAdjust) break;
             const sellAmountForThis = Math.min(
               positionToSell.value,
@@ -408,9 +433,9 @@ const PortfolioComparison = ({
           categorizedSymbols[categoryId] &&
           categorizedSymbols[categoryId].length > 0
         ) {
-          // Sort in descending order for buying (largest position first)
+          // Sort by stockDeviation ascending: buy most underweight stock first
           const buyPositions = [...categorizedSymbols[categoryId]].sort(
-            (a, b) => b.value - a.value
+            (a, b) => a.stockDeviation - b.stockDeviation
           );
 
           for (const positionToBuy of buyPositions) {
@@ -442,7 +467,10 @@ const PortfolioComparison = ({
         if (amountBought < amountToAdjust - 1) {
           // Allow small tolerance
           const modelStocksInCategory = modelPortfolioObj.stocks.filter(
-            (stock) => stockCategories[stock.symbol] === categoryId
+            (stock) => {
+              const allocs = getStockCategoryAllocations(stockCategories, stock.symbol);
+              return allocs.some(a => a.categoryId === categoryId);
+            }
           );
 
           if (modelStocksInCategory.length > 0) {
@@ -471,7 +499,16 @@ const PortfolioComparison = ({
     });
 
     return suggestions;
-  };
+  }, [
+    accounts,
+    categories,
+    deviations,
+    modelPortfolios,
+    selectedModelPortfolio,
+    stockCategories,
+    stockPrices,
+    totalPortfolioValue,
+  ]);
 
   // Generate specific stock-level rebalancing suggestions (Corrected .toFixed call)
   const generateSpecificSuggestions = useCallback(() => {
@@ -501,7 +538,7 @@ const PortfolioComparison = ({
             value,
             shares: position.shares,
             price: price,
-            category: stockCategories[position.symbol] || "uncategorized",
+            allocations: getStockCategoryAllocations(stockCategories, position.symbol),
           };
         }
         // Use the latest price if > 0? Or first price? Let's use latest valid price.
@@ -533,13 +570,14 @@ const PortfolioComparison = ({
             : "0.00"; // Format safely
           // ***** END CORRECTION *****
 
+          const primaryCatId = data.allocations[0]?.categoryId || 'uncategorized';
           suggestions.push({
             symbol,
             action: "Sell",
             shares: sharesToSell,
             value: formattedSellValue, // Use formatted value
             category:
-              categories.find((cat) => cat.id === data.category)?.name ||
+              categories.find((cat) => cat.id === primaryCatId)?.name ||
               "Uncategorized",
             currentPercentage: currentPercentage.toFixed(2),
             targetPercentage: modelPercentage.toFixed(2),
@@ -560,7 +598,8 @@ const PortfolioComparison = ({
           : typeof stockPrices[symbol] === "number" && stockPrices[symbol] > 0
           ? stockPrices[symbol]
           : 0;
-      const categoryId = stockCategories[symbol] || "uncategorized";
+      const allocs = getStockCategoryAllocations(stockCategories, symbol);
+      const categoryId = allocs[0]?.categoryId || "uncategorized";
 
       const targetValue = (percentage / 100) * currentTotalValue;
       const currentValue = currentData?.value || 0;
@@ -647,8 +686,8 @@ const PortfolioComparison = ({
             const isValidPrice = !isNaN(parsedPrice) && parsedPrice > 0;
              //if (!isValidPrice) console.warn(`[BuyOnly] Price issue for existing stock: ${symbol} (Raw: ${rawPrice})`);
             const value = isValidPrice ? parsedPrice * position.shares : 0;
-            const categoryId = stockCategories[symbol] || 'uncategorized';
-            if (!currentStockValues[symbol]) { currentStockValues[symbol] = { value: 0, shares: 0, price: isValidPrice ? parsedPrice : 0, category: categoryId, symbol: symbol }; }
+            const primaryCatId = getStockCategoryAllocations(stockCategories, symbol)[0]?.categoryId || 'uncategorized';
+            if (!currentStockValues[symbol]) { currentStockValues[symbol] = { value: 0, shares: 0, price: isValidPrice ? parsedPrice : 0, category: primaryCatId, allocations: getStockCategoryAllocations(stockCategories, symbol), symbol: symbol }; }
             currentStockValues[symbol].value += value;
             currentStockValues[symbol].shares += position.shares;
             if (currentStockValues[symbol].price <= 0 && isValidPrice) { currentStockValues[symbol].price = parsedPrice; }
@@ -661,31 +700,42 @@ const PortfolioComparison = ({
 
     // --- Candidate Generation (same as before, using parsed prices) ---
     console.log("[BuyOnly] Generating candidates...");
-    Object.values(currentStockValues).forEach(stockData => { /* ... add existing ... */
+    Object.values(currentStockValues).forEach(stockData => {
         const modelStock = modelStocksMap.get(stockData.symbol);
         const stockPrice = stockData.price;
         const isValidStockPrice = stockPrice > 0;
         if (modelStock && isValidStockPrice) {
-            const categoryId = stockData.category;
+            const allocs = stockData.allocations || getStockCategoryAllocations(stockCategories, stockData.symbol);
+            // Use primary (highest-percentage) category for headroom calculation
+            const primaryAlloc = allocs.reduce((best, a) => a.percentage > best.percentage ? a : best, allocs[0]);
+            const categoryId = primaryAlloc.categoryId;
             const currentCatAlloc = currentAllocation[categoryId] || 0;
             const targetCatAlloc = modelAllocation[categoryId] || 0;
-            const isUnderweight = currentCatAlloc < targetCatAlloc - 0.1;
-             // console.log(`[BuyOnly Cand-Existing] ${stockData.symbol}...`);
-            if (isUnderweight) { buyCandidates.push({ symbol: stockData.symbol, price: stockPrice, categoryId: categoryId, modelStockPercentage: modelStock.percentage, modelCategoryPercentage: targetCatAlloc }); }
+            const isCategoryUnderweight = currentCatAlloc < targetCatAlloc - 0.1;
+            // Also check if individual stock is underweight vs its model target
+            const currentStockPct = stockData.percentage || 0;
+            const targetStockPct = modelStock.percentage;
+            const isStockUnderweight = currentStockPct < targetStockPct - 0.1;
+            const stockDeviation = currentStockPct - targetStockPct;
+            if (isCategoryUnderweight || isStockUnderweight) { buyCandidates.push({ symbol: stockData.symbol, price: stockPrice, categoryId: categoryId, allocations: allocs, modelStockPercentage: modelStock.percentage, modelCategoryPercentage: targetCatAlloc, stockDeviation: stockDeviation }); }
         }
      });
-    selectedPortfolio.stocks.forEach(stock => { /* ... add new ... */
+    selectedPortfolio.stocks.forEach(stock => {
         if (!currentStockValues[stock.symbol]) {
              const rawPrice = stockPrices[stock.symbol];
              const parsedPrice = parseFloat(rawPrice);
              const isValidPrice = !isNaN(parsedPrice) && parsedPrice > 0;
              if (isValidPrice) {
-                const categoryId = stockCategories[stock.symbol] || 'uncategorized';
+                const allocs = getStockCategoryAllocations(stockCategories, stock.symbol);
+                const primaryAlloc = allocs.reduce((best, a) => a.percentage > best.percentage ? a : best, allocs[0]);
+                const categoryId = primaryAlloc.categoryId;
                 const currentCatAlloc = currentAllocation[categoryId] || 0;
                 const targetCatAlloc = modelAllocation[categoryId] || 0;
-                const isUnderweight = currentCatAlloc < targetCatAlloc - 0.1;
-                // console.log(`[BuyOnly Cand-New] ${stock.symbol}...`);
-                 if (isUnderweight) { buyCandidates.push({ symbol: stock.symbol, price: parsedPrice, categoryId: categoryId, modelStockPercentage: stock.percentage, modelCategoryPercentage: targetCatAlloc }); }
+                const isCategoryUnderweight = currentCatAlloc < targetCatAlloc - 0.1;
+                // Stock not held at all → 0% current, always underweight if target > 0
+                const isStockUnderweight = stock.percentage > 0.1;
+                const stockDeviation = 0 - stock.percentage;
+                 if (isCategoryUnderweight || isStockUnderweight) { buyCandidates.push({ symbol: stock.symbol, price: parsedPrice, categoryId: categoryId, allocations: allocs, modelStockPercentage: stock.percentage, modelCategoryPercentage: targetCatAlloc, stockDeviation: stockDeviation }); }
              }
         }
      });
@@ -740,14 +790,20 @@ const PortfolioComparison = ({
               break; // Can't afford top candidate, likely done
          }
 
-         // 3. Calculate Category Headroom
+         // 3. Calculate Category Headroom (for the primary category)
          const projectedCatValue = projectedCategoryValues[categoryId] || 0;
          const targetRatio = modelCategoryPercentage / 100;
-         let maxInvestmentInCategory = Infinity; // Max amount $ to add to category
-         if (targetRatio < 0.9999) {
-             // Formula: x = (Target% * TotalValue - CurrentCatValue) / (1 - Target%)
-             maxInvestmentInCategory = (targetRatio * currentTotalValueDynamic - projectedCatValue) / (1 - targetRatio);
-             maxInvestmentInCategory = Math.max(0, maxInvestmentInCategory); // Ensure non-negative
+         // For multi-category stocks, only a fraction of the investment goes to the primary category
+         const candidateAllocs = candidate.allocations || [{ categoryId, percentage: 100 }];
+         const primaryPct = (candidateAllocs.find(a => a.categoryId === categoryId)?.percentage || 100) / 100;
+         let maxInvestmentInCategory = Infinity; // Max total $ to invest in this stock (considering primary cat gets primaryPct)
+         if (targetRatio < 0.9999 && primaryPct > 0) {
+             // Amount that can go to primary cat: (Target% * TotalValue - CurrentCatValue) / (1 - Target%)
+             const maxCatAmount = (targetRatio * currentTotalValueDynamic - projectedCatValue) / (1 - targetRatio);
+             // Since only primaryPct of total investment goes to primary cat, total investment = catAmount / primaryPct
+             maxInvestmentInCategory = Math.max(0, maxCatAmount / primaryPct);
+         } else if (primaryPct <= 0) {
+             maxInvestmentInCategory = 0;
          } else {
             // Handle 100% target - essentially infinite headroom if not already there
             maxInvestmentInCategory = Math.max(0, amount); // Limited by total investment theoretically
@@ -780,17 +836,20 @@ const PortfolioComparison = ({
          if (sharesToBuy > 0) {
              const investmentThisStep = sharesToBuy * price;
 
-             // Final check: Ensure this doesn't push category % over target (using calculated values)
-             // This check is somewhat redundant given maxSharesForCategory, but good safety
-             const valueAfterBuy = projectedCatValue + investmentThisStep;
+             // Final check: Ensure this doesn't push primary category % over target
+             const primaryInvestment = investmentThisStep * primaryPct;
+             const valueAfterBuy = projectedCatValue + primaryInvestment;
              const totalAfterBuy = currentTotalValueDynamic + investmentThisStep;
              const percentAfterBuy = totalAfterBuy > 0 ? (valueAfterBuy / totalAfterBuy) * 100 : 0;
 
              if (percentAfterBuy <= modelCategoryPercentage + 0.1) { // Allow slightly larger tolerance for multi-share buys
                  console.log(`[BuyOnly Loop ${iteration}] ---> YES: Buying ${sharesToBuy} shares of ${symbol} for $${investmentThisStep.toFixed(2)}.`);
 
-                 // Update totals
-                 projectedCategoryValues[categoryId] = valueAfterBuy;
+                 // Update totals — distribute investment across all categories proportionally
+                 const candidateAllocs = candidate.allocations || [{ categoryId, percentage: 100 }];
+                 for (const { categoryId: catId, percentage: pct } of candidateAllocs) {
+                   projectedCategoryValues[catId] = (projectedCategoryValues[catId] || 0) + investmentThisStep * (pct / 100);
+                 }
                  currentTotalValueDynamic = totalAfterBuy;
                  remainingInvestment -= investmentThisStep;
 
@@ -906,7 +965,7 @@ const PortfolioComparison = ({
   // Update rebalance actions when deviations change (for Sell-Buy mode)
   useEffect(() => {
     if (selectedModelPortfolio && Object.keys(deviations).length > 0) {
-      const suggestions = memoizedGenerateRebalanceSuggestions(); // Use memoized version
+      const suggestions = generateRebalanceSuggestions();
       setRebalanceActions(suggestions);
 
       // Only calculate simulated allocation if sell-buy rebalancing is shown
@@ -993,16 +1052,8 @@ const PortfolioComparison = ({
     showSellBuyRebalancing,
     showWhatIfAnalysis,
     showBuyOnlyRebalancing,
+    generateRebalanceSuggestions,
   ]); // Added dependencies
-
-  // Memoize generateRebalanceSuggestions and generateSpecificSuggestions
-  const memoizedGenerateRebalanceSuggestions = useCallback(() => {
-    return generateRebalanceSuggestions();
-  }, [generateRebalanceSuggestions]);
-
-  const memoizedGenerateSpecificSuggestions = useCallback(() => {
-    return generateSpecificSuggestions();
-  }, [generateSpecificSuggestions]);
 
   // Calculate buy-only rebalancing suggestions when investment amount changes
   useEffect(() => {
@@ -1090,7 +1141,7 @@ const PortfolioComparison = ({
       account.positions.forEach((position) => {
         const price = stockPrices[position.symbol] || 0;
         const value = price * position.shares;
-        const categoryId = stockCategories[position.symbol] || "uncategorized";
+        const primaryCatId = getStockCategoryAllocations(stockCategories, position.symbol)[0]?.categoryId || "uncategorized";
 
         if (projectedStockValues[position.symbol]) {
           projectedStockValues[position.symbol].value += value;
@@ -1101,7 +1152,7 @@ const PortfolioComparison = ({
             shares: position.shares,
             price,
             percentage: 0, // Will calculate after adding purchases
-            category: categoryId,
+            category: primaryCatId,
             symbol: position.symbol, // Keep symbol
           };
         }
@@ -1372,8 +1423,8 @@ const PortfolioComparison = ({
         }),
       },
       totalPortfolioValue: totalPortfolioValue,
-      rebalanceSuggestions: memoizedGenerateRebalanceSuggestions(), // General suggestions
-      specificStockSuggestions: memoizedGenerateSpecificSuggestions(), // Specific suggestions
+      rebalanceSuggestions: generateRebalanceSuggestions(), // General suggestions
+      specificStockSuggestions: generateSpecificSuggestions(), // Specific suggestions
       currentHoldings: accounts.flatMap((account) => {
         return account.positions.map((position) => {
           const symbol = position.symbol;
@@ -1381,15 +1432,16 @@ const PortfolioComparison = ({
           const value = position.shares * price;
           const percentage =
             totalPortfolioValue > 0 ? (value / totalPortfolioValue) * 100 : 0;
-          const categoryId = stockCategories[symbol] || "uncategorized";
+          const allocs = getStockCategoryAllocations(stockCategories, symbol);
+          const primaryCatId = allocs[0]?.categoryId || "uncategorized";
 
           return {
             symbol,
             account: account.name,
             category:
-              categories.find((c) => c.id === categoryId)?.name ||
+              categories.find((c) => c.id === primaryCatId)?.name ||
               "Uncategorized",
-            categoryId: categoryId,
+            categoryId: primaryCatId,
             shares: position.shares,
             price,
             value,
@@ -1398,7 +1450,7 @@ const PortfolioComparison = ({
         });
       }),
       modelHoldings: modelPortfolioObj.stocks.map((stock) => {
-        const categoryId = stockCategories[stock.symbol] || "uncategorized";
+        const categoryId = getStockCategoryAllocations(stockCategories, stock.symbol)[0]?.categoryId || "uncategorized";
         return {
           symbol: stock.symbol,
           category:
@@ -1510,9 +1562,9 @@ const PortfolioComparison = ({
         const symbol = parts[1]; // AAPL
         const price = stockPrices[symbol] || 0;
         const shares = price > 0 ? Math.floor(suggestion.amount / price) : 0;
-        const categoryId = stockCategories[symbol] || "uncategorized";
+        const primaryCatId = getStockCategoryAllocations(stockCategories, symbol)[0]?.categoryId || "uncategorized";
         const categoryName =
-          categories.find((c) => c.id === categoryId)?.name || "Uncategorized";
+          categories.find((c) => c.id === primaryCatId)?.name || "Uncategorized";
         // --- START: Get account name (use '-' if it's a BUY action) ---
         const accountName = suggestion.action.startsWith("SELL") ? suggestion.account : "-";
         // --- END: Get account name ---
@@ -1525,21 +1577,21 @@ const PortfolioComparison = ({
           amount: suggestion.amount,
           account: accountName, // <-- Add account name here
           currentCategoryPercentage: (
-            currentAllocation[categoryId] || 0
+            currentAllocation[primaryCatId] || 0
           ).toFixed(2),
-          targetCategoryPercentage: (modelAllocation[categoryId] || 0).toFixed(
+          targetCategoryPercentage: (modelAllocation[primaryCatId] || 0).toFixed(
             2
           ),
           deviation: (
-            (currentAllocation[categoryId] || 0) -
-            (modelAllocation[categoryId] || 0)
+            (currentAllocation[primaryCatId] || 0) -
+            (modelAllocation[primaryCatId] || 0)
           ).toFixed(2),
           projectedCategoryPercentage: (
-            simulatedAllocation[categoryId] || 0
+            simulatedAllocation[primaryCatId] || 0
           ).toFixed(2),
           projectedDeviation: (
-            (simulatedAllocation[categoryId] || 0) -
-            (modelAllocation[categoryId] || 0)
+            (simulatedAllocation[primaryCatId] || 0) -
+            (modelAllocation[primaryCatId] || 0)
           ).toFixed(2),
         };
       });
@@ -1649,7 +1701,7 @@ const PortfolioComparison = ({
         }
     } else { // <-- END: Add What-If condition (existing else block follows)
       // Default: Export specific stock suggestions if no mode is active or suggestions exist
-      const specificSuggestions = memoizedGenerateSpecificSuggestions();
+      const specificSuggestions = generateSpecificSuggestions();
       if (specificSuggestions.length > 0) {
         currentExportMode = "specific";
         const headers = [
@@ -3005,6 +3057,113 @@ const PortfolioComparison = ({
                       </tbody>
                     </Table>
                   </div>
+
+                  {/* Stock-Level Comparison Toggle */}
+                  <Button
+                    variant={showStockComparison ? "secondary" : "outline-info"}
+                    size="sm"
+                    className="mt-2 mb-3"
+                    onClick={() => setShowStockComparison(!showStockComparison)}
+                  >
+                    {showStockComparison ? "Hide Stock-Level Comparison" : "Show Stock-Level Comparison"}
+                  </Button>
+
+                  {showStockComparison && selectedModelPortfolio && (() => {
+                    const selectedPortfolio = modelPortfolios.find(p => p.name === selectedModelPortfolio);
+                    if (!selectedPortfolio) return null;
+
+                    // Build stock-level comparison data
+                    const stockComparisonData = [];
+                    const currentStockValues = {};
+                    accounts.forEach(account => {
+                      account.positions.forEach(position => {
+                        const price = stockPrices[position.symbol] || 0;
+                        const value = price * position.shares;
+                        if (!currentStockValues[position.symbol]) {
+                          currentStockValues[position.symbol] = { value: 0 };
+                        }
+                        currentStockValues[position.symbol].value += value;
+                      });
+                    });
+
+                    selectedPortfolio.stocks.forEach(stock => {
+                      const currentValue = currentStockValues[stock.symbol]?.value || 0;
+                      const currentPct = totalPortfolioValue > 0 ? (currentValue / totalPortfolioValue) * 100 : 0;
+                      const targetPct = stock.percentage;
+                      const deviation = currentPct - targetPct;
+                      const allocs = getStockCategoryAllocations(stockCategories, stock.symbol);
+                      const primaryCatId = allocs.length > 0 ? allocs[0].categoryId : 'uncategorized';
+                      const categoryName = categories.find(c => c.id === primaryCatId)?.name || 'Uncategorized';
+
+                      stockComparisonData.push({
+                        symbol: stock.symbol,
+                        category: categoryName,
+                        targetPct,
+                        currentPct,
+                        deviation,
+                      });
+                    });
+
+                    // Also add held stocks not in the model
+                    Object.keys(currentStockValues).forEach(symbol => {
+                      if (!selectedPortfolio.stocks.find(s => s.symbol === symbol)) {
+                        const currentValue = currentStockValues[symbol].value;
+                        const currentPct = totalPortfolioValue > 0 ? (currentValue / totalPortfolioValue) * 100 : 0;
+                        const allocs = getStockCategoryAllocations(stockCategories, symbol);
+                        const primaryCatId = allocs.length > 0 ? allocs[0].categoryId : 'uncategorized';
+                        const categoryName = categories.find(c => c.id === primaryCatId)?.name || 'Uncategorized';
+                        stockComparisonData.push({
+                          symbol,
+                          category: categoryName,
+                          targetPct: 0,
+                          currentPct,
+                          deviation: currentPct,
+                        });
+                      }
+                    });
+
+                    stockComparisonData.sort((a, b) => a.deviation - b.deviation);
+
+                    return (
+                      <div className="table-responsive">
+                        <h6 className="mt-2 mb-2">Stock-Level Comparison</h6>
+                        <Table striped bordered hover size="sm">
+                          <thead>
+                            <tr>
+                              <th>Symbol</th>
+                              <th>Category</th>
+                              <th>Target %</th>
+                              <th>Current %</th>
+                              <th>Deviation</th>
+                              <th>Action</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {stockComparisonData.map(row => (
+                              <tr key={row.symbol}>
+                                <td>{row.symbol}</td>
+                                <td>{row.category}</td>
+                                <td className="text-end">{formatNumber(row.targetPct)}%</td>
+                                <td className="text-end">{formatNumber(row.currentPct)}%</td>
+                                <td className="text-end">
+                                  {row.deviation >= 0 ? "+" : ""}{formatNumber(row.deviation)}%
+                                </td>
+                                <td>
+                                  {row.deviation < -0.5 ? (
+                                    <Badge bg="success">Buy</Badge>
+                                  ) : row.deviation > 0.5 ? (
+                                    <Badge bg="danger">Sell</Badge>
+                                  ) : (
+                                    <Badge bg="secondary">Hold</Badge>
+                                  )}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </Table>
+                      </div>
+                    );
+                  })()}
                 </>
               )}
             </>
