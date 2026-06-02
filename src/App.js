@@ -4,6 +4,12 @@ import 'bootstrap/dist/css/bootstrap.min.css';
 import './App.css';
 import { formatDollarAmount } from './utils/formatters';
 import { migrateStockCategories } from './utils/categoryUtils';
+import {
+  buildPriceSyncErrorMessage,
+  extractMarketstackPrices,
+  parseMarketstackResponseError,
+  partitionSymbolsForMarketstack,
+} from './utils/priceSyncUtils';
 
 // Import Components
 import Header from './components/Header';
@@ -420,6 +426,7 @@ function App() {
       }
 
       // Check if API key is provided
+      let apiKeyForRequest = marketstackApiKey;
       if (!marketstackApiKey) {
         const apiKey = prompt("Please enter your Marketstack API key to fetch real-time stock prices:");
         if (!apiKey) {
@@ -427,53 +434,77 @@ function App() {
           return null;
         }
         setMarketstackApiKey(apiKey);
+        apiKeyForRequest = apiKey;
       }
 
       setIsLoadingPrices(true);
       setApiError(null);
 
+      const { requestableSymbols, skippedSymbols } = partitionSymbolsForMarketstack(symbolsArray);
+
+      if (requestableSymbols.length === 0) {
+        setIsLoadingPrices(false);
+        const errorMessage = buildPriceSyncErrorMessage({
+          successCount: 0,
+          failedSymbols: [],
+          skippedSymbols,
+          batchErrors: [],
+        });
+        setApiError(errorMessage);
+        alert(`No selected symbols can be requested from Marketstack. See details in the price sync error panel.`);
+        return calculateTotalPortfolioValue(accounts, stockPrices);
+      }
+
       // Process symbols in batches of 100 (API limit)
       const batchSize = 100;
       const updatedPrices = { ...stockPrices };
-      let failedSymbols = [];
+      const failedSymbols = [];
+      const batchErrors = [];
       let successCount = 0;
 
-      for (let i = 0; i < symbolsArray.length; i += batchSize) {
-        const batchSymbols = symbolsArray.slice(i, i + batchSize);
+      for (let i = 0; i < requestableSymbols.length; i += batchSize) {
+        const batchSymbols = requestableSymbols.slice(i, i + batchSize);
         const symbolsString = batchSymbols.join(',');
 
         try {
+          const query = new URLSearchParams({
+            access_key: apiKeyForRequest,
+            symbols: symbolsString,
+          });
+
           // Make API request to Marketstack
           const response = await fetch(
-            `https://api.marketstack.com/v1/eod/latest?access_key=${marketstackApiKey}&symbols=${symbolsString}`
+            `https://api.marketstack.com/v1/eod/latest?${query.toString()}`
           );
 
           if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.error?.message || 'Failed to fetch stock prices');
+            throw new Error(await parseMarketstackResponseError(response));
           }
 
           const data = await response.json();
 
-          // Update prices for each symbol in the response
-          if (data.data && Array.isArray(data.data)) {
-            // Use for loop instead of forEach to avoid closure issues
-            for (let j = 0; j < data.data.length; j++) {
-              const stock = data.data[j];
-              if (stock.symbol && stock.close) {
-                updatedPrices[stock.symbol] = parseFloat(stock.close).toFixed(2);
-                successCount += 1;
-              } else {
-                failedSymbols.push(stock.symbol || 'Unknown');
-              }
-            }
+          if (data.error) {
+            throw new Error(data.error.message || 'Marketstack returned an API error');
           }
+
+          const { prices, failures } = extractMarketstackPrices(batchSymbols, data);
+          const priceEntries = Object.entries(prices);
+          for (let j = 0; j < priceEntries.length; j++) {
+            const [symbol, price] = priceEntries[j];
+            updatedPrices[symbol] = price;
+            successCount += 1;
+          }
+          failedSymbols.push(...failures);
           
           // Add a small delay to respect API rate limits
           await new Promise(resolve => setTimeout(resolve, 200));
         } catch (error) {
           console.error(`Error fetching batch of symbols: ${error.message}`);
-          failedSymbols = [...failedSymbols, ...batchSymbols];
+          batchErrors.push({ symbols: batchSymbols, reason: error.message });
+          failedSymbols.push(...batchSymbols.map(symbol => ({
+            symbol,
+            reason: error.message,
+          })));
         }
       }
 
@@ -483,10 +514,16 @@ function App() {
       // Calculate portfolio value but don't record a snapshot
       const totalValue = calculateTotalPortfolioValue(accounts, updatedPrices);
 
-      if (failedSymbols.length > 0) {
-        setApiError(`Failed to update prices for ${failedSymbols.length} symbols: ${failedSymbols.join(', ')}`);
-        console.error('Failed symbols:', failedSymbols);
-        alert(`Successfully updated ${successCount} symbols. ${failedSymbols.length} symbols failed to update.`);
+      if (failedSymbols.length > 0 || skippedSymbols.length > 0) {
+        const errorMessage = buildPriceSyncErrorMessage({
+          successCount,
+          failedSymbols,
+          skippedSymbols,
+          batchErrors,
+        });
+        setApiError(errorMessage);
+        console.error('Price sync details:', { failedSymbols, skippedSymbols, batchErrors });
+        alert(`Price sync updated ${successCount} symbols. ${failedSymbols.length} failed and ${skippedSymbols.length} were skipped. See details in the price sync error panel.`);
       } else {
         alert(`Successfully updated prices for ${successCount} symbols!`);
       }

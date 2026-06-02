@@ -48,6 +48,10 @@ const CurrentPortfolio = ({
   const [newSnapshotDate, setNewSnapshotDate] = useState('');
   const [isErrorDismissed, setIsErrorDismissed] = useState(false);
 
+  useEffect(() => {
+    setIsErrorDismissed(false);
+  }, [apiError]);
+
   // Update expandedAccounts when accounts are added or removed
   useEffect(() => {
     // Default to having all accounts collapsed when accounts change
@@ -815,18 +819,9 @@ const CurrentPortfolio = ({
       {apiError && !isErrorDismissed && (
         <Alert variant="danger" className="mb-4" dismissible onClose={() => setIsErrorDismissed(true)}>
           <Alert.Heading>Error Syncing Prices</Alert.Heading>
-          {apiError.includes('Failed to update prices for') ? (
-            <>
-              <p>{apiError.split(':')[0]}:</p>
-              <ul className="mb-0">
-                {apiError.split(':')[1].split(',').map((symbol, index) => (
-                  <li key={index}>{symbol.trim()}</li>
-                ))}
-              </ul>
-            </>
-          ) : (
-            <p>{apiError}</p>
-          )}
+          <pre className="mb-0" style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit' }}>
+            {apiError}
+          </pre>
         </Alert>
       )}
 
